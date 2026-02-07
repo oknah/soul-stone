@@ -1,0 +1,3580 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Soul Stone - Auto-Battler</title>
+  <style>
+    @font-face {
+      font-family: 'AvQest';
+      src: url('AvQest.ttf') format('truetype');
+      font-weight: normal;
+      font-style: normal;
+    }
+
+    @font-face {
+      font-family: 'PressStart2P';
+      src: url('PressStart2P.ttf') format('truetype');
+      font-weight: normal;
+      font-style: normal;
+    }
+
+    /* ================================================================
+       BASE VARIABLES
+       ================================================================ */
+    :root {
+      /* Gold accents — kept for AvQest title and highlights */
+      --gold-light: #d4af37;
+      --gold-mid: #C8B458;
+      --gold-dark: #8a7a3a;
+      --gold-dim: #4a4428;
+
+      /* Backgrounds — deep indigo/blue, the JRPG signature */
+      --bg-darkest: #08081a;
+      --bg-dark: #0e0e28;
+      --bg-panel: #141438;
+
+      /* HP (red) — brighter, cleaner */
+      --health-bright: #cc2222;
+      --health-mid: #881111;
+      --health-dark: #440808;
+
+      /* MP (blue) — richer, distinguishable from bg */
+      --mana-bright: #2060c0;
+      --mana-mid: #103080;
+      --mana-dark: #081840;
+
+      /* Text — white-primary, not gold-primary */
+      --text-primary: #e8e0f0;
+      --text-dim: #7878a0;
+    }
+
+    /* ================================================================
+       JRPG THEME — FF6 palette
+       ================================================================ */
+    [data-theme="jrpg"] {
+      --battle-bg: rgba(12, 12, 30, 0.8);
+      --party-area-bg: rgba(15, 15, 40, 0.5);
+      --boss-area-bg: rgba(15, 15, 40, 0.3);
+      --hp-bar-fill: #cc2222;
+      --hp-bar-ghost: rgba(255, 100, 100, 0.5);
+      --hp-bar-bg: rgba(0, 0, 0, 0.8);
+      --damage-color: #F8F8F8;
+      --crit-color: #FF4444;
+      --victory-color: #FFD700;
+      --summon-glow: rgba(255, 220, 100, 0.6);
+
+      /* FF6 SNES-accurate palette */
+      --ff6-name-gold: #C8B458;
+      --ff6-text-white: #F8F8F8;
+      --ff6-hp-critical: #F8D830;
+      --ff6-atb-fill: #D4A820;
+      --ff6-atb-bright: #F8D830;
+      --ff6-atb-empty: #181818;
+      --ff6-window-border: #E7DFE7;
+      --ff6-damage-white: #F8F8F8;
+      --ff6-heal-green: #00E800;
+    }
+
+    /* ================================================================
+       RESET & BASE
+       ================================================================ */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'AvQest';
+      background: linear-gradient(135deg, var(--bg-darkest) 0%, var(--bg-dark) 50%, var(--bg-darkest) 100%);
+      color: var(--gold-light);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    .battle-text {
+      font-family: 'PressStart2P', monospace;
+      font-smooth: never;
+      -webkit-font-smoothing: none;
+      -moz-osx-font-smoothing: unset;
+      text-rendering: optimizeSpeed;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 10px;
+    }
+
+    /* ================================================================
+       HEADER
+       ================================================================ */
+    .header {
+      text-align: center;
+      margin-bottom: 12px;
+      position: relative;
+    }
+
+    .title {
+      font-family: 'AvQest';
+      font-size: 2em;
+      color: var(--gold-light);
+      text-shadow: 0 0 12px rgba(212, 175, 55, 0.8),
+                   0 0 24px rgba(212, 175, 55, 0.5),
+                   1px 1px 3px rgba(0, 0, 0, 0.8);
+      margin-bottom: 4px;
+      letter-spacing: 2px;
+    }
+
+    .subtitle {
+      font-size: 0.85em;
+      color: var(--text-primary);
+      text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+    }
+
+    .header-controls {
+      position: absolute;
+      top: 10px;
+      right: 0;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .control-btn {
+      background: rgba(20, 20, 56, 0.8);
+      border: 1px solid var(--gold-dim);
+      color: var(--gold-mid);
+      padding: 6px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-family: 'AvQest';
+      font-size: 0.85em;
+    }
+    .control-btn:hover {
+      border-color: var(--gold-light);
+    }
+
+    .theme-select {
+      background: rgba(20, 20, 56, 0.8);
+      border: 1px solid var(--gold-dim);
+      color: var(--gold-mid);
+      padding: 6px 8px;
+      border-radius: 4px;
+      font-family: 'AvQest';
+      font-size: 0.85em;
+    }
+
+    /* ================================================================
+       COUNTERS (JRPG-style numeric panels)
+       ================================================================ */
+    .counters-container {
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+      margin-bottom: 12px;
+      padding: 0 20px;
+    }
+
+    .counter-panel {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      background: linear-gradient(to bottom, #3a3a7a 0%, #1a1a4a 50%, #0a0a2a 100%);
+      border: 2px solid #E7DFE7;
+      border-radius: 4px;
+      box-shadow: inset 1px 1px 0 rgba(255,255,255,0.15),
+                  inset -1px -1px 0 rgba(0,0,0,0.3),
+                  0 2px 8px rgba(0,0,0,0.5);
+      font-family: 'PressStart2P', monospace;
+      font-smooth: never;
+      -webkit-font-smoothing: none;
+    }
+
+    .counter-icon {
+      font-size: 1.1em;
+      line-height: 1;
+    }
+
+    .counter-info {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .counter-label {
+      font-size: 7px;
+      color: #7878a0;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .counter-value {
+      font-size: 12px;
+      color: #F8F8F8;
+      text-shadow: 1px 1px 0 rgba(0,0,0,0.8);
+    }
+
+    /* ================================================================
+       MAIN PANEL
+       ================================================================ */
+    .tasks-container {
+      background: var(--bg-panel);
+      border: 2px solid var(--gold-dark);
+      border-radius: 10px;
+      padding: 12px;
+      box-shadow: 0 0 20px rgba(0, 0, 0, 0.9),
+                  inset 0 0 30px rgba(0, 0, 0, 0.5);
+      position: relative;
+    }
+
+    .tasks-container::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+      opacity: 0.05;
+      pointer-events: none;
+      border-radius: 10px;
+    }
+
+    .section-title {
+      font-size: 1.2em;
+      color: var(--gold-light);
+      text-align: center;
+      margin-bottom: 10px;
+      text-shadow: 0 0 10px rgba(212, 175, 55, 0.6);
+      border-bottom: 2px solid var(--gold-dark);
+      padding-bottom: 6px;
+    }
+
+    /* ================================================================
+       BATTLE SCENE — Canvas + Status Panel layout
+       ================================================================ */
+    .battle-scene {
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      gap: 0;
+    }
+
+    /* Canvas container */
+    .canvas-container {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 256 / 224;
+      max-height: 300px;
+      background: #000;
+      border-radius: 8px 8px 0 0;
+      overflow: hidden;
+    }
+
+    .canvas-container canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+
+    /* CRT filter overlay */
+    .canvas-container.crt-enabled::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: repeating-linear-gradient(
+        to bottom,
+        transparent 0px,
+        transparent 1px,
+        rgba(0, 0, 0, 0.25) 1px,
+        rgba(0, 0, 0, 0.25) 2px
+      );
+      pointer-events: none;
+      z-index: 10;
+      border-radius: 8px 8px 0 0;
+    }
+
+    .canvas-container.crt-enabled::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      box-shadow: inset 0 0 100px rgba(100, 140, 255, 0.03);
+      pointer-events: none;
+      z-index: 11;
+      border-radius: 20px;
+    }
+
+    .canvas-container.crt-enabled {
+      border-radius: 20px 20px 0 0;
+    }
+
+    /* DOM fallback — kept for no-canvas browsers */
+    .dom-fallback {
+      display: none;
+    }
+    .dom-fallback.active {
+      display: flex;
+      min-height: 360px;
+      gap: 20px;
+    }
+
+    .dom-fallback .party-area {
+      flex: 0 0 240px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 10px;
+      background: var(--party-area-bg);
+      border-radius: 8px;
+      border: 1px solid rgba(74, 74, 130, 0.3);
+      overflow-y: auto;
+      max-height: 400px;
+    }
+
+    .dom-fallback .boss-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      background: var(--boss-area-bg);
+      border-radius: 8px;
+      border: 1px solid rgba(74, 74, 130, 0.2);
+      position: relative;
+    }
+
+    /* ================================================================
+       FF6 BLUE GRADIENT STATUS PANEL
+       ================================================================ */
+    .status-panel {
+      background: linear-gradient(to bottom,
+        #7b7bd6 0%, #7373ce 5%, #6b6bc6 10%, #6363bd 15%,
+        #5a5ab5 20%, #5252ad 25%, #4a4aa5 30%, #42429c 35%,
+        #393994 40%, #31318c 45%, #292984 50%, #21217b 55%,
+        #181873 60%, #10106b 65%, #080862 68%, #00005a 72%,
+        #000052 76%, #00004a 80%, #000042 85%, #000039 90%,
+        #000031 95%, #000029 100%
+      );
+      border: 4px ridge #ffffff;
+      border-radius: 0 0 12px 12px;
+      color: #ffffff;
+      text-shadow: #000 1px 1px;
+      padding: 8px 12px;
+      box-shadow: 0 0 0 1px #000, inset 0 0 10px rgba(0, 0, 0, 0.3);
+    }
+
+    /* Boss info row in status panel */
+    .boss-status-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 2px 8px;
+      margin-bottom: 4px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+      padding-bottom: 4px;
+    }
+
+    .boss-status-name {
+      font-family: 'PressStart2P', monospace;
+      font-smooth: never;
+      -webkit-font-smoothing: none;
+      font-size: 10px;
+      color: var(--ff6-name-gold);
+      white-space: nowrap;
+      min-width: 200px;
+    }
+
+    .boss-hp-bar-container {
+      flex: 1;
+      max-width: 200px;
+      height: 10px;
+      background: var(--ff6-atb-empty);
+      border: 1px solid #404040;
+      border-radius: 1px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .boss-hp-bar-ghost {
+      position: absolute;
+      top: 0; left: 0;
+      height: 100%;
+      background: rgba(255, 100, 100, 0.4);
+      transition: width 0.6s ease-out;
+    }
+
+    .boss-hp-bar-fill {
+      position: absolute;
+      top: 0; left: 0;
+      height: 100%;
+      background: linear-gradient(180deg, #dd3333 0%, #aa1111 60%, #881111 100%);
+      transition: width 0.1s linear;
+    }
+
+    .boss-hp-numbers {
+      font-family: 'PressStart2P', monospace;
+      font-smooth: never;
+      -webkit-font-smoothing: none;
+      font-size: 9px;
+      color: var(--ff6-text-white);
+      white-space: nowrap;
+      min-width: 120px;
+      text-align: right;
+    }
+
+    .boss-kill-count {
+      font-family: 'PressStart2P', monospace;
+      font-smooth: never;
+      -webkit-font-smoothing: none;
+      font-size: 8px;
+      color: var(--ff6-name-gold);
+      margin-left: auto;
+    }
+
+    /* Party member rows */
+    .party-rows {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .party-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 1px 8px;
+      border-radius: 2px;
+    }
+
+    .party-row-name {
+      font-family: 'PressStart2P', monospace;
+      font-smooth: never;
+      -webkit-font-smoothing: none;
+      font-size: 9px;
+      color: var(--ff6-name-gold);
+      min-width: 140px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* ATB Gauge */
+    .atb-gauge {
+      width: 60px;
+      height: 4px;
+      background: var(--ff6-atb-empty);
+      border: 1px solid #404040;
+      border-radius: 1px;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+
+    .atb-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--ff6-atb-fill), var(--ff6-atb-bright));
+      transition: width 0.1s linear;
+    }
+
+    .atb-fill.full {
+      animation: atb-flash 0.3s ease infinite alternate;
+    }
+
+    @keyframes atb-flash {
+      from { background: #F8D830; }
+      to   { background: #FFF8A0; }
+    }
+
+    .party-row-class {
+      font-family: 'PressStart2P', monospace;
+      font-smooth: never;
+      -webkit-font-smoothing: none;
+      font-size: 7px;
+      color: var(--ff6-text-white);
+      min-width: 70px;
+      text-transform: uppercase;
+    }
+
+    .party-row-task {
+      font-family: 'PressStart2P', monospace;
+      font-smooth: never;
+      -webkit-font-smoothing: none;
+      font-size: 7px;
+      color: rgba(200, 200, 200, 0.6);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      flex: 1;
+    }
+
+    /* Empty state */
+    .empty-status {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 60px;
+      font-family: 'PressStart2P', monospace;
+      font-smooth: never;
+      -webkit-font-smoothing: none;
+      font-size: 9px;
+      color: rgba(200, 200, 220, 0.5);
+      text-align: center;
+    }
+
+    /* ================================================================
+       VICTORY OVERLAY (canvas-based, but DOM fallback too)
+       ================================================================ */
+    .victory-overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 50;
+      pointer-events: none;
+    }
+
+    .victory-text {
+      font-family: 'PressStart2P', monospace;
+      font-smooth: never;
+      -webkit-font-smoothing: none;
+      font-size: 2.5em;
+      color: var(--victory-color);
+      text-shadow: 0 0 30px rgba(212, 175, 55, 0.8),
+                   0 0 60px rgba(212, 175, 55, 0.5),
+                   3px 3px 6px rgba(0, 0, 0, 0.9);
+      animation: victoryPulse 2.5s ease-out forwards;
+      letter-spacing: 6px;
+    }
+
+    @keyframes victoryPulse {
+      0%   { opacity: 0; transform: scale(0.5); }
+      15%  { opacity: 1; transform: scale(1.2); }
+      30%  { transform: scale(1); }
+      70%  { opacity: 1; }
+      100% { opacity: 0; transform: scale(1.1); }
+    }
+
+    /* ================================================================
+       CHARACTER SPRITES (DOM fallback)
+       ================================================================ */
+    .character-slot {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 4px 8px;
+      border-radius: 4px;
+      background: rgba(20, 20, 56, 0.6);
+      border: 1px solid rgba(74, 74, 130, 0.3);
+      position: relative;
+    }
+
+    .character {
+      width: 64px;
+      height: 64px;
+      background-size: 384px 256px;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+      flex-shrink: 0;
+    }
+
+    .character.idle {
+      animation: sprite-idle 0.8s steps(6) infinite;
+    }
+    @keyframes sprite-idle {
+      from { background-position-x: 0; }
+      to { background-position-x: -384px; }
+    }
+
+    .character.attacking {
+      background-position-y: -64px;
+      animation: sprite-attack 0.4s steps(4) forwards;
+    }
+    @keyframes sprite-attack {
+      from { background-position-x: 0; }
+      to { background-position-x: -256px; }
+    }
+
+    .character-slot.summoning {
+      animation: summon 0.6s ease-out forwards;
+    }
+    @keyframes summon {
+      0%   { opacity: 0; transform: translateY(20px) scale(0.5); filter: brightness(3); }
+      50%  { opacity: 1; filter: brightness(2); }
+      100% { opacity: 1; transform: translateY(0) scale(1); filter: brightness(1); }
+    }
+
+    .character-slot.unsummoning {
+      animation: unsummon 0.5s ease-in forwards;
+    }
+    @keyframes unsummon {
+      0%   { opacity: 1; transform: scale(1); filter: brightness(1); }
+      50%  { filter: brightness(2.5); }
+      100% { opacity: 0; transform: scale(0.3) translateY(-20px); filter: brightness(3); }
+    }
+
+    .character-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .character-name {
+      font-size: 0.85em;
+      color: var(--gold-light);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+    }
+
+    .character-class {
+      font-size: 0.7em;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .character-task {
+      font-size: 0.65em;
+      color: var(--gold-dim);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Boss sprite (DOM fallback) */
+    .boss-sprite {
+      width: 128px;
+      height: 128px;
+      background-size: 512px 128px;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+      animation: boss-idle 1.2s steps(4) infinite;
+      margin-bottom: 16px;
+    }
+    @keyframes boss-idle {
+      from { background-position-x: 0; }
+      to { background-position-x: -512px; }
+    }
+
+    .boss-sprite.dying {
+      animation: boss-death-anim 1s ease-out forwards;
+    }
+    @keyframes boss-death-anim {
+      0%   { filter: brightness(1); transform: scale(1); }
+      20%  { filter: brightness(3); transform: scale(1.1); }
+      40%  { filter: brightness(1); transform: translateX(-5px); }
+      50%  { transform: translateX(5px); }
+      60%  { transform: translateX(-3px); filter: brightness(2); }
+      80%  { opacity: 0.5; filter: brightness(1.5); }
+      100% { opacity: 0; transform: scale(0.8) translateY(20px); filter: brightness(3); }
+    }
+
+    .boss-name {
+      font-size: 1.3em;
+      color: var(--gold-light);
+      text-shadow: 0 0 10px rgba(212, 175, 55, 0.5),
+                   2px 2px 4px rgba(0, 0, 0, 0.8);
+      margin-bottom: 12px;
+      text-align: center;
+    }
+
+    .boss-hp-container {
+      width: 100%;
+      max-width: 350px;
+      height: 28px;
+      background: var(--hp-bar-bg);
+      border: 2px solid var(--gold-dim);
+      border-radius: 4px;
+      position: relative;
+      overflow: hidden;
+      box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.8);
+    }
+
+    .boss-hp-ghost {
+      position: absolute;
+      top: 0; left: 0;
+      height: 100%;
+      width: 100%;
+      background: var(--hp-bar-ghost);
+      transition: width 0.6s ease-out;
+    }
+
+    .boss-hp-fill {
+      position: absolute;
+      top: 0; left: 0;
+      height: 100%;
+      width: 100%;
+      background: linear-gradient(180deg, #dd3333 0%, #aa1111 60%, #881111 100%);
+      transition: width 0.1s linear;
+      box-shadow: 0 0 8px rgba(200, 50, 50, 0.4);
+    }
+
+    .boss-hp-fill::after {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 40%;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.25), transparent);
+    }
+
+    .boss-hp-text {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.85em;
+      color: #fff;
+      text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.9);
+      z-index: 2;
+    }
+
+    .boss-meta {
+      margin-top: 8px;
+      font-size: 0.8em;
+      color: var(--text-dim);
+      text-align: center;
+    }
+
+    /* Damage numbers (DOM fallback) */
+    .damage-number {
+      position: fixed;
+      color: var(--damage-color);
+      font-family: 'PressStart2P', monospace;
+      font-smooth: never;
+      -webkit-font-smoothing: none;
+      font-size: 1.2em;
+      text-shadow: 2px 2px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000;
+      animation: floatUp 0.9s ease-out forwards;
+      pointer-events: none;
+      z-index: 100;
+      white-space: nowrap;
+    }
+
+    .damage-number.crit {
+      color: var(--crit-color);
+      font-size: 1.6em;
+      text-shadow: 2px 2px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000,
+                   0 0 10px rgba(255, 68, 68, 0.6);
+    }
+
+    @keyframes floatUp {
+      0%   { opacity: 1; transform: translateY(0) scale(1.2); }
+      20%  { transform: translateY(-15px) scale(1); }
+      100% { opacity: 0; transform: translateY(-60px) scale(0.8); }
+    }
+
+    /* ================================================================
+       EMPTY STATE
+       ================================================================ */
+    .empty-party {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: var(--text-dim);
+      font-size: 0.95em;
+      text-align: center;
+      padding: 20px;
+      font-style: italic;
+    }
+
+    /* ================================================================
+       FOOTER
+       ================================================================ */
+    .footer {
+      text-align: center;
+      margin-top: 20px;
+      font-size: 0.7em;
+      color: var(--text-dim);
+    }
+
+    .footer a {
+      color: var(--gold-dim);
+    }
+
+    /* ================================================================
+       RESPONSIVE
+       ================================================================ */
+    @media (max-width: 700px) {
+      .counters-container {
+        padding: 0 20px;
+      }
+      .header-controls {
+        position: static;
+        justify-content: center;
+        margin-top: 10px;
+      }
+      .boss-status-name {
+        min-width: 100px;
+        font-size: 8px;
+      }
+      .party-row-name {
+        min-width: 80px;
+        font-size: 8px;
+      }
+    }
+
+    @media (max-height: 600px) {
+      .title {
+        font-size: 1.6em;
+      }
+      .subtitle {
+        display: none;
+      }
+      .counter-panel {
+        padding: 4px 10px;
+        gap: 6px;
+      }
+      .counter-value {
+        font-size: 10px;
+      }
+      .counter-label {
+        font-size: 6px;
+      }
+      .container {
+        padding: 6px;
+      }
+      .header {
+        margin-bottom: 6px;
+      }
+      .counters-container {
+        margin-bottom: 6px;
+      }
+      .tasks-container {
+        padding: 8px;
+      }
+      .section-title {
+        font-size: 1em;
+        margin-bottom: 6px;
+        padding-bottom: 4px;
+      }
+      .canvas-container {
+        max-height: 220px;
+      }
+      .status-panel {
+        padding: 4px 8px;
+        border-width: 3px;
+      }
+      .boss-status-row {
+        margin-bottom: 2px;
+        padding-bottom: 2px;
+      }
+      .party-row {
+        padding: 0 8px;
+      }
+    }
+  </style>
+</head>
+<body data-theme="jrpg">
+  <div class="container">
+    <div class="header">
+      <h1 class="title">SOUL STONE</h1>
+      <p class="subtitle">Arena of the Ancients</p>
+      <div class="header-controls">
+        <button class="control-btn" id="muteBtn" title="Toggle sound">Sound: ON</button>
+        <button class="control-btn" id="crtBtn" title="Toggle CRT filter">CRT: OFF</button>
+        <select class="theme-select" id="themeSelect" title="Theme">
+          <option value="jrpg">JRPG</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="counters-container">
+      <div class="counter-panel">
+        <span class="counter-icon">⚔</span>
+        <div class="counter-info">
+          <span class="counter-label">Party</span>
+          <span class="counter-value" id="partyCount">0</span>
+        </div>
+      </div>
+      <div class="counter-panel">
+        <span class="counter-icon">☠</span>
+        <div class="counter-info">
+          <span class="counter-label">Slain</span>
+          <span class="counter-value" id="killCount">0</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="tasks-container">
+      <h2 class="section-title">Battle Arena</h2>
+      <div class="battle-scene" id="battleScene">
+
+        <!-- Canvas battle renderer -->
+        <div class="canvas-container" id="canvasContainer">
+          <canvas id="displayCanvas"></canvas>
+        </div>
+
+        <!-- FF6 Blue Gradient Status Panel -->
+        <div class="status-panel" id="statusPanel">
+          <div class="boss-status-row" id="bossStatusRow">
+            <span class="boss-status-name" id="bossStatusName">???</span>
+            <div class="boss-hp-bar-container">
+              <div class="boss-hp-bar-ghost" id="bossBarGhost"></div>
+              <div class="boss-hp-bar-fill" id="bossBarFill"></div>
+            </div>
+            <span class="boss-hp-numbers" id="bossHpNumbers">HP 0 / 0</span>
+            <span class="boss-kill-count" id="bossKillCount">Slain: 0</span>
+          </div>
+          <div class="party-rows" id="partyRows">
+            <div class="empty-status" id="emptyStatus">The battlefield lies silent...</div>
+          </div>
+        </div>
+
+        <!-- DOM fallback (hidden when canvas works) -->
+        <div class="dom-fallback" id="domFallback">
+          <div class="party-area" id="partyArea">
+            <div class="empty-party" id="emptyParty">
+              Awaiting champions...<br>Start a task to summon your party
+            </div>
+          </div>
+          <div class="boss-area" id="bossArea">
+            <div class="boss-sprite" id="bossSprite"></div>
+            <div class="boss-name" id="bossNameDom">???</div>
+            <div class="boss-hp-container">
+              <div class="boss-hp-ghost" id="bossHpGhostDom"></div>
+              <div class="boss-hp-fill" id="bossHpFillDom"></div>
+              <div class="boss-hp-text" id="bossHpTextDom">0 / 0</div>
+            </div>
+            <div class="boss-meta" id="bossMetaDom"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer">
+      Placeholder sprites - replace with <a href="https://0x72.itch.io/dungeontileset-ii">0x72 DungeonTileset II</a> (CC0)
+    </div>
+  </div>
+
+  <script>
+    // ==================================================================
+    // STATE
+    // ==================================================================
+    const party = new Map(); // taskId -> { task, canvasChar, rowEl }
+    let bossState = null;
+    let muted = false;
+    let crtEnabled = localStorage.getItem('soulstone-crt') === 'true';
+    let audioCtx = null;
+    let masterGain = null;
+    let echoWet = null;
+    let useCanvas = true;
+
+    // ==================================================================
+    // SPRITE CONFIG (matches MANIFEST.md)
+    // ==================================================================
+    const SPRITE_CONFIG = {
+      characters: {
+        frameW: 16, frameH: 16,
+        rows: { idle: 0, attack: 1, hit: 2, death: 3 },
+        frameCounts: { idle: 6, attack: 4, hit: 2, death: 4 },
+      },
+      bosses: {
+        frameW: 32, frameH: 32,
+        rows: { idle: 0 },
+        frameCounts: { idle: 4 },
+      },
+      effects: {
+        frameW: 16, frameH: 16,
+        rows: { slash: 0 },
+        frameCounts: { slash: 4 },
+      },
+    };
+
+    // ==================================================================
+    // CANVAS INFRASTRUCTURE
+    // ==================================================================
+    const GAME_W = 256, GAME_H = 224;
+    const SPRITE_FPS = 12;
+    const SPRITE_INTERVAL = 1000 / SPRITE_FPS;
+
+    const displayCanvas = document.getElementById('displayCanvas');
+    const canvasContainer = document.getElementById('canvasContainer');
+    let displayCtx = null;
+    let offscreen = null;
+    let gameCtx = null;
+    let lastTime = 0;
+    let spriteTimer = 0;
+    let gameRunning = false;
+
+    // Sprite image cache
+    const spriteImages = {};
+    const spriteLoadPromises = [];
+
+    function loadSpriteImage(key, url) {
+      const p = new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => { spriteImages[key] = img; resolve(); };
+        img.onerror = () => resolve(); // Don't block on missing sprites
+        img.src = url;
+      });
+      spriteLoadPromises.push(p);
+    }
+
+    // Load effect sprites (bosses are now procedurally generated like characters)
+    loadSpriteImage('slash', 'sprites/effects/slash.png');
+
+    // ==================================================================
+    // PROCEDURAL BOSS SPRITE GENERATOR
+    // 8 archetypes, each generating a 128x32 canvas (4 frames of 32x32)
+    // ==================================================================
+    const BOSS_ARCHETYPES = [
+      // 0: Dragon — winged serpentine body, long neck, tail
+      {
+        name: 'dragon',
+        palette: { body: '#8b0000', belly: '#cc4422', wing: '#660022', eye: '#ffdd00', horn: '#443322', accent: '#ff4400' },
+        mask: [
+          // 32 rows, 16 cols (half-width, mirrored). 0=empty 1=maybe 2=always 3=wing 4=horn 5=eye 6=belly 7=accent
+          '0000000000000042',
+          '0000000000000422',
+          '0000000000002222',
+          '0000000000022252',
+          '0000000000222222',
+          '0000000002222222',
+          '0000000022226222',
+          '0000003322222222',
+          '0000033222222222',
+          '0003332222222222',
+          '0033332222222222',
+          '0033322222222222',
+          '0003322226222221',
+          '0000022226222210',
+          '0000002226222100',
+          '0000000222221000',
+          '0000000222210000',
+          '0000000022100000',
+          '0000000022000000',
+          '0000000021000000',
+          '0000000020000000',
+          '0000000010000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+        ],
+      },
+      // 1: Demon — horns, broad shoulders, hooves, wings
+      {
+        name: 'demon',
+        palette: { body: '#551133', belly: '#882244', wing: '#330022', eye: '#ff0000', horn: '#ddcc88', accent: '#ff3366' },
+        mask: [
+          '0000000040000004',
+          '0000000440000044',
+          '0000004400000044',
+          '0000004200000024',
+          '0000002220002220',
+          '0000002222022220',
+          '0000002225222220',
+          '0000032222222220',
+          '0000332222262220',
+          '0003322222262220',
+          '0003322222222220',
+          '0003322222222220',
+          '0000022222222220',
+          '0000022222622210',
+          '0000022222622100',
+          '0000002222221000',
+          '0000002222210000',
+          '0000002222100000',
+          '0000002221000000',
+          '0000002210000000',
+          '0000002200000000',
+          '0000002200000000',
+          '0000002100000000',
+          '0000002100000000',
+          '0000022200000000',
+          '0000022200000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+        ],
+      },
+      // 2: Golem — massive blocky body, thick limbs, rune markings
+      {
+        name: 'golem',
+        palette: { body: '#556677', belly: '#778899', wing: '#445566', eye: '#44ff88', horn: '#667788', accent: '#88ffaa' },
+        mask: [
+          '0000000000000000',
+          '0000000000000000',
+          '0000000222222200',
+          '0000002222222220',
+          '0000002222522220',
+          '0000002222222220',
+          '0000022222222220',
+          '0000222222262220',
+          '0002222222262220',
+          '0022222222222220',
+          '0022222222222220',
+          '0022222226222220',
+          '0022222226222220',
+          '0002222222222200',
+          '0002222222222200',
+          '0000222222222000',
+          '0000222222222000',
+          '0000022222220000',
+          '0000022222220000',
+          '0000022002220000',
+          '0000022002220000',
+          '0000022002220000',
+          '0000022002220000',
+          '0000222002220000',
+          '0000222002220000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+        ],
+      },
+      // 3: Undead Knight — armored skeleton, tattered cape, glowing eyes
+      {
+        name: 'undead_knight',
+        palette: { body: '#444455', belly: '#555566', wing: '#333344', eye: '#00ffcc', horn: '#888899', accent: '#66ddff' },
+        mask: [
+          '0000000000000000',
+          '0000000044000000',
+          '0000000422200000',
+          '0000002222220000',
+          '0000002225220000',
+          '0000002222220000',
+          '0000002222220000',
+          '0000022222222000',
+          '0000222222222200',
+          '0003222226222200',
+          '0003222226222200',
+          '0003022222222200',
+          '0003002222222000',
+          '0003002222222000',
+          '0003002222222000',
+          '0000002222220000',
+          '0000002222220000',
+          '0000002222220000',
+          '0000002200220000',
+          '0000002200220000',
+          '0000002200220000',
+          '0000002200220000',
+          '0000022200222000',
+          '0000022200222000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+        ],
+      },
+      // 4: Sea Serpent / Kraken — tentacles, scales, single large eye
+      {
+        name: 'kraken',
+        palette: { body: '#225566', belly: '#338877', wing: '#114433', eye: '#ffff44', horn: '#44aa88', accent: '#44ffdd' },
+        mask: [
+          '0000000000000000',
+          '0000000000000000',
+          '0000000222222000',
+          '0000002222222200',
+          '0000022222222220',
+          '0000022225222220',
+          '0000022222222220',
+          '0000022222622220',
+          '0000222222222220',
+          '0002222222222220',
+          '0002222222222220',
+          '0000222222222200',
+          '0000022222222000',
+          '0000222022202200',
+          '0002220022002220',
+          '0022200022002222',
+          '0222000020002222',
+          '0220000020000222',
+          '0200000020000022',
+          '0000000020000002',
+          '0000000020000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+        ],
+      },
+      // 5: Dark Mage / Lich — hooded robes, staff, floating, ethereal
+      {
+        name: 'lich',
+        palette: { body: '#332255', belly: '#443366', wing: '#221144', eye: '#ff44ff', horn: '#8866aa', accent: '#cc66ff' },
+        mask: [
+          '0000000000000000',
+          '0000000022220000',
+          '0000000222222000',
+          '0000002222222200',
+          '0000002225222200',
+          '0000002222222200',
+          '0000002222222000',
+          '0000022222222200',
+          '0000022222222200',
+          '0000222222622220',
+          '0002222222622220',
+          '0002222222222220',
+          '0002222222222220',
+          '0000222222222200',
+          '0000022222222000',
+          '0000002222220000',
+          '0000002272220000',
+          '0000000222200000',
+          '0000000022200000',
+          '0000000002200000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+        ],
+      },
+      // 6: Giant Spider — multiple legs, mandibles, many eyes
+      {
+        name: 'spider',
+        palette: { body: '#333322', belly: '#554433', wing: '#222211', eye: '#ff2222', horn: '#443322', accent: '#ff4444' },
+        mask: [
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000222200000',
+          '0000002225520000',
+          '0000002222220000',
+          '0000022222222000',
+          '0002022222222020',
+          '0020022222222002',
+          '0200222222222020',
+          '0002222222222200',
+          '0020222222222020',
+          '0200022222220002',
+          '0002002222200020',
+          '0020000222000200',
+          '0200000020002000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+        ],
+      },
+      // 7: Elemental — amorphous, shifting, glowing core
+      {
+        name: 'elemental',
+        palette: { body: '#883300', belly: '#cc5500', wing: '#662200', eye: '#ffff88', horn: '#aa4400', accent: '#ffaa22' },
+        mask: [
+          '0000000000000000',
+          '0000000001000000',
+          '0000000012100000',
+          '0000000122210000',
+          '0000001222221000',
+          '0000012225221000',
+          '0000122222221100',
+          '0001222222222100',
+          '0001222262222100',
+          '0012222262222210',
+          '0012222222222210',
+          '0012222222222210',
+          '0012222222222210',
+          '0001222222222100',
+          '0000122222221000',
+          '0000012222210000',
+          '0000001222100000',
+          '0000000121000000',
+          '0000000010000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+          '0000000000000000',
+        ],
+      },
+    ];
+
+    const NUM_BOSS_TYPES = BOSS_ARCHETYPES.length;
+
+    function generateBossSprite(bossIndex) {
+      const archetype = BOSS_ARCHETYPES[bossIndex % NUM_BOSS_TYPES];
+      const pal = archetype.palette;
+      const W = 32, H = 32, FRAMES = 4;
+
+      const canvas = document.createElement('canvas');
+      canvas.width = W * FRAMES; // 128 wide
+      canvas.height = H;         // 32 tall
+      const ctx = canvas.getContext('2d');
+      ctx.imageSmoothingEnabled = false;
+
+      // Parse the mask strings into a 2D numeric array
+      const mask = archetype.mask.map(row => row.split('').map(Number));
+
+      // Map digit codes to palette keys
+      // 0=empty, 1=maybe-body, 2=body, 3=wing, 4=horn, 5=eye, 6=belly, 7=accent
+      function getColor(code) {
+        switch (code) {
+          case 2: case 1: return pal.body;
+          case 3: return pal.wing;
+          case 4: return pal.horn;
+          case 5: return pal.eye;
+          case 6: return pal.belly;
+          case 7: return pal.accent;
+          default: return null;
+        }
+      }
+
+      // Build base pixel grid (NOT mirrored — boss sprites are asymmetric)
+      const pixels = Array.from({ length: H }, () => Array(W).fill(null));
+      for (let y = 0; y < H && y < mask.length; y++) {
+        for (let x = 0; x < 16 && x < mask[y].length; x++) {
+          const code = mask[y][x];
+          if (code === 0) continue;
+          const fill = code >= 2 || (code === 1 && Math.random() > 0.4);
+          if (fill) {
+            const color = getColor(code) || pal.body;
+            // Place on right half (boss faces left, so body is on right)
+            pixels[y][W - 1 - x] = color;
+            // Mirror the left portion for symmetrical creatures
+            pixels[y][x] = color;
+          }
+        }
+      }
+
+      // Add subtle per-pixel shading (darken bottom, lighten top)
+      function shadeColor(hex, row) {
+        const r = parseInt(hex.slice(1, 3), 16);
+        const g = parseInt(hex.slice(3, 5), 16);
+        const b = parseInt(hex.slice(5, 7), 16);
+        // Top rows lighter, bottom rows darker
+        const factor = 1.0 + (16 - row) * 0.015;
+        return `rgb(${Math.min(255, Math.floor(r * factor))},${Math.min(255, Math.floor(g * factor))},${Math.min(255, Math.floor(b * factor))})`;
+      }
+
+      function drawBossFrame(ox, yShift) {
+        // Draw 1px black outline
+        for (let y = 0; y < H; y++) {
+          for (let x = 0; x < W; x++) {
+            if (!pixels[y][x]) continue;
+            const dy = y + (yShift || 0);
+            if (dy < 0 || dy >= H) continue;
+            for (let ny = -1; ny <= 1; ny++) {
+              for (let nx = -1; nx <= 1; nx++) {
+                if (ny === 0 && nx === 0) continue;
+                const py = y + ny, px = x + nx;
+                if (py < 0 || py >= H || px < 0 || px >= W || !pixels[py][px]) {
+                  const drawY = dy + ny;
+                  const drawX = x + nx;
+                  if (drawY >= 0 && drawY < H && drawX >= 0 && drawX < W) {
+                    ctx.fillStyle = '#000';
+                    ctx.fillRect(ox + drawX, drawY, 1, 1);
+                  }
+                }
+              }
+            }
+          }
+        }
+        // Draw filled pixels
+        for (let y = 0; y < H; y++) {
+          for (let x = 0; x < W; x++) {
+            if (!pixels[y][x]) continue;
+            const dy = y + (yShift || 0);
+            if (dy >= 0 && dy < H) {
+              ctx.fillStyle = shadeColor(pixels[y][x], y);
+              ctx.fillRect(ox + x, dy, 1, 1);
+            }
+          }
+        }
+      }
+
+      // 4 idle frames with subtle vertical bob
+      const idleShifts = [0, -1, 0, 1];
+      for (let f = 0; f < FRAMES; f++) {
+        drawBossFrame(f * W, idleShifts[f]);
+      }
+
+      const img = new Image();
+      img.src = canvas.toDataURL('image/png');
+      return img;
+    }
+
+    // Pre-generate boss sprites for all archetypes
+    for (let i = 0; i < NUM_BOSS_TYPES; i++) {
+      spriteImages[`boss-${i + 1}`] = generateBossSprite(i);
+    }
+
+    // ==================================================================
+    // PROCEDURAL CHARACTER SPRITE GENERATOR
+    // Each summoned character gets a unique sprite with class colors
+    // ==================================================================
+    // ==================================================================
+    // Enhanced JRPG Palette System — 3-tone shading per zone
+    // Inspired by FF6 / Golden Sun SNES sprite art
+    // ==================================================================
+    const CLASS_PALETTES = {
+      warrior: {
+        skin: '#e8b878', skinHi: '#f8d8a0', skinSh: '#b08050',
+        hair: '#8b4513', hairHi: '#a06030', hairSh: '#5a2a08',
+        armor1: '#cc3333', armor1Hi: '#ee5555', armor1Sh: '#881818',
+        armor2: '#8b1111', armor2Hi: '#aa2828', armor2Sh: '#550808',
+        weapon: '#c0c0c0', weaponHi: '#e8e8e8', weaponSh: '#808080',
+        accent: '#e8c84a', accentHi: '#ffe070', accentSh: '#a08828',
+        boots: '#553322', bootsHi: '#7a5540', bootsSh: '#331a10',
+        outline: '#1a0808',
+      },
+      mage: {
+        skin: '#e8b878', skinHi: '#f8d8a0', skinSh: '#b08050',
+        hair: '#6630a0', hairHi: '#8848c0', hairSh: '#3a1868',
+        armor1: '#4466cc', armor1Hi: '#6688ee', armor1Sh: '#223388',
+        armor2: '#223388', armor2Hi: '#3348aa', armor2Sh: '#111a55',
+        weapon: '#88ccff', weaponHi: '#bbddff', weaponSh: '#4488cc',
+        accent: '#aabbff', accentHi: '#ccddff', accentSh: '#6688cc',
+        boots: '#334466', bootsHi: '#4a6088', bootsSh: '#1a2233',
+        outline: '#0a0820',
+      },
+      rogue: {
+        skin: '#d4a060', skinHi: '#e8c088', skinSh: '#a07840',
+        hair: '#333333', hairHi: '#555555', hairSh: '#111111',
+        armor1: '#447744', armor1Hi: '#669966', armor1Sh: '#224422',
+        armor2: '#335533', armor2Hi: '#447744', armor2Sh: '#112211',
+        weapon: '#888888', weaponHi: '#bbbbbb', weaponSh: '#555555',
+        accent: '#88aa66', accentHi: '#aacc88', accentSh: '#557744',
+        boots: '#333322', bootsHi: '#4a4a38', bootsSh: '#1a1a10',
+        outline: '#0a0a08',
+      },
+      cleric: {
+        skin: '#f0c8a0', skinHi: '#ffe0c0', skinSh: '#c0a078',
+        hair: '#ddcc88', hairHi: '#eee0aa', hairSh: '#aa9960',
+        armor1: '#ddddaa', armor1Hi: '#eeeecc', armor1Sh: '#aabb88',
+        armor2: '#aaaa77', armor2Hi: '#cccc99', armor2Sh: '#888855',
+        weapon: '#ffe866', weaponHi: '#fff8a0', weaponSh: '#ccaa33',
+        accent: '#ffffff', accentHi: '#ffffff', accentSh: '#cccccc',
+        boots: '#887755', bootsHi: '#aa9977', bootsSh: '#554433',
+        outline: '#181008',
+      },
+      ranger: {
+        skin: '#d4a060', skinHi: '#e8c088', skinSh: '#a07840',
+        hair: '#556b2f', hairHi: '#778844', hairSh: '#334418',
+        armor1: '#44aa88', armor1Hi: '#66ccaa', armor1Sh: '#227755',
+        armor2: '#227755', armor2Hi: '#339966', armor2Sh: '#114433',
+        weapon: '#8b6914', weaponHi: '#aa8830', weaponSh: '#5a4008',
+        accent: '#66cc99', accentHi: '#88eebb', accentSh: '#44aa77',
+        boots: '#554433', bootsHi: '#776655', bootsSh: '#332218',
+        outline: '#081008',
+      },
+      berserker: {
+        skin: '#c89060', skinHi: '#e0b080', skinSh: '#906838',
+        hair: '#cc4400', hairHi: '#ee6622', hairSh: '#882200',
+        armor1: '#884422', armor1Hi: '#aa6644', armor1Sh: '#552210',
+        armor2: '#662211', armor2Hi: '#884433', armor2Sh: '#331108',
+        weapon: '#aa6633', weaponHi: '#cc8855', weaponSh: '#774418',
+        accent: '#ff6644', accentHi: '#ff8866', accentSh: '#cc4422',
+        boots: '#443322', bootsHi: '#664a38', bootsSh: '#221a10',
+        outline: '#100808',
+      },
+    };
+
+    // ==================================================================
+    // Full 16x16 pixel-art sprite data per class.
+    // Zone codes: '.'=empty 'H'=hair 'S'=skin 'E'=eye(dark)
+    //   'A'=armor1 'B'=armor2 'W'=weapon 'X'=accent 'T'=boots 'O'=outline
+    // ==================================================================
+    const CLASS_SPRITES = {
+      warrior: {
+        idle: [
+          '......OHHHO.....',
+          '.....OHHHHO.....',
+          '.....OSSESO.....',
+          '......OSSO......',
+          '....OAAXAAO.....',
+          '...OAAAXAAAO....',
+          '...OAAAXAAAO....',
+          '....OAAXAAO.....',
+          '....OXXXO.......',
+          '....OBBBO.......',
+          '....OB.OBO......',
+          '....OB.OBO......',
+          '....OB.OBO......',
+          '....OT.OTO......',
+          '...OTTO.OTTO....',
+          '...OTTT.TTTO....',
+        ],
+        weaponIdle: [
+          {x:3,y:4,c:'W'},{x:3,y:5,c:'W'},{x:3,y:6,c:'W'},{x:3,y:7,c:'W'},{x:3,y:8,c:'W'},
+        ],
+        shieldIdle: [
+          {x:12,y:5,c:'X'},{x:13,y:5,c:'X'},{x:12,y:6,c:'X'},{x:13,y:6,c:'X'},{x:12,y:7,c:'X'},{x:13,y:7,c:'X'},
+        ],
+      },
+      mage: {
+        idle: [
+          '.......OXO......',
+          '......OXXO......',
+          '.....OXXHHO.....',
+          '.....OHHHHO.....',
+          '.....OSSESO.....',
+          '......OSSO......',
+          '....OAAAAAAO....',
+          '...OAAAAAAAAO...',
+          '...OAAAAAAAAO...',
+          '..OAAAAAAAAAO...',
+          '..OAAAAAAAAO....',
+          '...OAAAAAAAO....',
+          '....OAAAAAAO....',
+          '....OAAAAAO.....',
+          '.....OTTTO......',
+          '.....OTTTO......',
+        ],
+        weaponIdle: [
+          {x:2,y:2,c:'W'},{x:2,y:3,c:'W'},{x:2,y:4,c:'W'},{x:2,y:5,c:'W'},{x:2,y:6,c:'W'},
+          {x:2,y:7,c:'W'},{x:2,y:8,c:'W'},{x:2,y:9,c:'W'},{x:2,y:10,c:'W'},
+          {x:1,y:1,c:'X'},{x:2,y:1,c:'X'},{x:3,y:1,c:'X'},{x:2,y:0,c:'X'},
+        ],
+      },
+      rogue: {
+        idle: [
+          '......OHHHO.....',
+          '.....OHHHHO.....',
+          '.....OHSESO.....',
+          '.....OSSSO......',
+          '......OSSO......',
+          '....OAAAAAAO....',
+          '....OAAAAAAO....',
+          '.....OAAAAO.....',
+          '.....OXXXO......',
+          '.....OBBBO......',
+          '.....OB.BO......',
+          '.....OB.BO......',
+          '....OB..OBO.....',
+          '....OB..OBO.....',
+          '...OTT.OTTO.....',
+          '...OTT..TTO.....',
+        ],
+        weaponIdle: [
+          {x:3,y:6,c:'W'},{x:3,y:7,c:'W'},{x:3,y:8,c:'W'},
+          {x:12,y:6,c:'W'},{x:12,y:7,c:'W'},{x:12,y:8,c:'W'},
+        ],
+      },
+      cleric: {
+        idle: [
+          '......OXXO......',
+          '.....OXXXXO.....',
+          '.....OHHHHO.....',
+          '.....OSSESO.....',
+          '......OSSO......',
+          '....OAAAAAAO....',
+          '...OAAAAAAAAO...',
+          '...OAAAAAAAAO...',
+          '..OAAAAAAAAAO...',
+          '..OAAAAAAAAO....',
+          '...OAAAAAAAO....',
+          '...OAAAAAAAO....',
+          '....OAAAAAO.....',
+          '....OAAAAAO.....',
+          '.....OTTTO......',
+          '.....OTTTO......',
+        ],
+        weaponIdle: [
+          {x:2,y:3,c:'W'},{x:2,y:4,c:'W'},{x:2,y:5,c:'W'},{x:2,y:6,c:'W'},
+          {x:2,y:7,c:'W'},{x:2,y:8,c:'W'},{x:2,y:9,c:'W'},{x:2,y:10,c:'W'},
+          {x:1,y:2,c:'X'},{x:2,y:2,c:'X'},{x:3,y:2,c:'X'},{x:2,y:1,c:'X'},
+        ],
+      },
+      ranger: {
+        idle: [
+          '......OHHHO.....',
+          '.....OHHHHO.....',
+          '.....OSSESO.....',
+          '......OSSO......',
+          '...OOAAAAAAO....',
+          '..OXXAAAAAAO....',
+          '..OXXOAAAAO.....',
+          '...OXOAAAO......',
+          '...OOOXXXO......',
+          '.....OBBBO......',
+          '.....OB.BO......',
+          '.....OB.BO......',
+          '....OB..OBO.....',
+          '....OT..OTO.....',
+          '...OTTO.OTTO....',
+          '...OTT..TTTO....',
+        ],
+        weaponIdle: [
+          {x:2,y:5,c:'W'},{x:1,y:6,c:'W'},{x:1,y:7,c:'W'},{x:1,y:8,c:'W'},{x:2,y:9,c:'W'},
+          {x:3,y:4,c:'W'},{x:3,y:10,c:'W'},
+        ],
+      },
+      berserker: {
+        idle: [
+          '.....OHHHHO.....',
+          '....OHHHHHO.....',
+          '....OHHHHHO.....',
+          '.....OSSESO.....',
+          '......OSSO......',
+          '...OSSSSSSSO....',
+          '..OSSSSSSSSO....',
+          '..OSSSSSSSSO....',
+          '...OSSSSSSSO....',
+          '....OXXXXO......',
+          '....OBBBO.......',
+          '....OB.OBO......',
+          '...OBB.OBBO.....',
+          '...OTT.OTTO.....',
+          '..OTTT.OTTTO....',
+          '..OTTT.TTTTO....',
+        ],
+        weaponIdle: [
+          {x:1,y:2,c:'W'},{x:1,y:3,c:'W'},{x:1,y:4,c:'W'},{x:1,y:5,c:'W'},
+          {x:1,y:6,c:'W'},{x:1,y:7,c:'W'},{x:1,y:8,c:'W'},
+          {x:0,y:2,c:'X'},{x:0,y:3,c:'X'},{x:0,y:4,c:'W'},{x:2,y:2,c:'X'},{x:2,y:3,c:'X'},
+        ],
+      },
+    };
+
+    // Parse hex to {r,g,b}
+    function hexToRgb(hex) {
+      return { r: parseInt(hex.slice(1,3),16), g: parseInt(hex.slice(3,5),16), b: parseInt(hex.slice(5,7),16) };
+    }
+
+    // Convert rgb() string to hex
+    function rgbToHex(rgb) {
+      if (rgb.startsWith('#')) return rgb;
+      const m = rgb.match(/(\d+)/g);
+      if (!m || m.length < 3) return '#000000';
+      return '#' + ((1<<24)+(parseInt(m[0])<<16)+(parseInt(m[1])<<8)+parseInt(m[2])).toString(16).slice(1);
+    }
+
+    // Darken a color by a factor (0..1)
+    function darkenColor(hex, factor) {
+      if (!hex.startsWith('#')) hex = rgbToHex(hex);
+      const c = hexToRgb(hex);
+      return `rgb(${Math.floor(c.r*factor)},${Math.floor(c.g*factor)},${Math.floor(c.b*factor)})`;
+    }
+
+    // Lighten a color by a factor
+    function lightenColor(hex, factor) {
+      if (!hex.startsWith('#')) hex = rgbToHex(hex);
+      const c = hexToRgb(hex);
+      return `rgb(${Math.min(255,Math.floor(c.r+(255-c.r)*factor))},${Math.min(255,Math.floor(c.g+(255-c.g)*factor))},${Math.min(255,Math.floor(c.b+(255-c.b)*factor))})`;
+    }
+
+    // Resolve zone code -> shaded color (SNES-style: top-left=highlight, bottom-right=shadow)
+    function resolveZoneColor(zone, pal, x, y) {
+      const map = {'H':'hair','S':'skin','E':'outline','A':'armor1','B':'armor2','W':'weapon','X':'accent','T':'boots','O':'outline'};
+      const base = map[zone];
+      if (!base) return null;
+      if (base === 'outline') return pal.outline || '#000000';
+      const d = (x/16 + y/16) / 2;
+      if (d < 0.30) return pal[base+'Hi'] || pal[base];
+      if (d > 0.62) return pal[base+'Sh'] || pal[base];
+      return pal[base];
+    }
+
+    // Parse 16-string array into 16x16 grid
+    function parseSpriteGrid(lines) {
+      const g = [];
+      for (let y = 0; y < 16; y++) {
+        const row = [], line = lines[y] || '................';
+        for (let x = 0; x < 16; x++) row.push(line[x] || '.');
+        g.push(row);
+      }
+      return g;
+    }
+
+    // Apply point overlays onto grid
+    function applyOverlays(grid, overlays) {
+      if (!overlays) return;
+      for (const o of overlays) {
+        if (o.x >= 0 && o.x < 16 && o.y >= 0 && o.y < 16 && grid[o.y][o.x] === '.') {
+          grid[o.y][o.x] = o.c;
+        }
+      }
+    }
+
+    // Shift a grid by (dx, dy)
+    function shiftGrid(grid, dx, dy) {
+      const out = Array.from({length:16}, () => Array(16).fill('.'));
+      for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+        if (grid[y][x] === '.') continue;
+        const ny = y+dy, nx = x+dx;
+        if (ny >= 0 && ny < 16 && nx >= 0 && nx < 16) out[ny][nx] = grid[y][x];
+      }
+      return out;
+    }
+
+    // Auto-generate 1px outline around filled pixels
+    function addOutlines(grid) {
+      const out = grid.map(r => [...r]);
+      for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+        if (grid[y][x] !== '.') continue;
+        outer: for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+          if (dy===0 && dx===0) continue;
+          const ny=y+dy, nx=x+dx;
+          if (ny>=0 && ny<16 && nx>=0 && nx<16 && grid[ny][nx]!=='.' && grid[ny][nx]!=='O') {
+            out[y][x] = 'O'; break outer;
+          }
+        }
+      }
+      return out;
+    }
+
+    // Draw a 16x16 frame onto canvas at (ox, oy)
+    function drawSpriteFrame(ctx, grid, pal, ox, oy) {
+      for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+        if (grid[y][x] === '.') continue;
+        const color = resolveZoneColor(grid[y][x], pal, x, y);
+        if (color) { ctx.fillStyle = color; ctx.fillRect(ox+x, oy+y, 1, 1); }
+      }
+    }
+
+    // Per-class, per-frame attack weapon overlays
+    function getAttackWeaponOverlay(cls, frame) {
+      const w = {
+        warrior: [
+          [{x:3,y:5,c:'W'},{x:3,y:6,c:'W'},{x:3,y:7,c:'W'},{x:3,y:8,c:'W'},{x:3,y:9,c:'W'}],
+          [{x:4,y:1,c:'W'},{x:5,y:1,c:'W'},{x:3,y:2,c:'W'},{x:4,y:2,c:'W'},{x:3,y:3,c:'W'}],
+          [{x:1,y:3,c:'W'},{x:2,y:4,c:'W'},{x:3,y:5,c:'W'},{x:4,y:6,c:'W'},{x:5,y:7,c:'W'},{x:0,y:3,c:'X'},{x:1,y:4,c:'X'}],
+          [{x:3,y:5,c:'W'},{x:3,y:6,c:'W'},{x:3,y:7,c:'W'},{x:3,y:8,c:'W'}],
+        ],
+        mage: [
+          [{x:2,y:3,c:'W'},{x:2,y:4,c:'W'},{x:2,y:5,c:'W'},{x:2,y:6,c:'W'},{x:2,y:7,c:'W'},{x:2,y:8,c:'W'}],
+          [{x:2,y:2,c:'W'},{x:2,y:3,c:'W'},{x:2,y:4,c:'W'},{x:2,y:5,c:'W'},{x:2,y:6,c:'W'},{x:1,y:1,c:'X'},{x:2,y:1,c:'X'},{x:3,y:1,c:'X'}],
+          [{x:2,y:3,c:'W'},{x:2,y:4,c:'W'},{x:2,y:5,c:'W'},{x:0,y:5,c:'X'},{x:1,y:4,c:'X'},{x:1,y:5,c:'X'},{x:1,y:6,c:'X'},{x:0,y:4,c:'X'},{x:0,y:6,c:'X'}],
+          [{x:2,y:3,c:'W'},{x:2,y:4,c:'W'},{x:2,y:5,c:'W'},{x:2,y:6,c:'W'},{x:2,y:7,c:'W'},{x:2,y:8,c:'W'}],
+        ],
+        rogue: [
+          [{x:3,y:6,c:'W'},{x:3,y:7,c:'W'},{x:12,y:6,c:'W'},{x:12,y:7,c:'W'}],
+          [{x:2,y:5,c:'W'},{x:2,y:6,c:'W'},{x:13,y:5,c:'W'},{x:13,y:6,c:'W'}],
+          [{x:1,y:5,c:'W'},{x:0,y:5,c:'W'},{x:1,y:6,c:'W'},{x:0,y:6,c:'W'},{x:14,y:5,c:'W'},{x:15,y:5,c:'W'}],
+          [{x:3,y:6,c:'W'},{x:3,y:7,c:'W'},{x:12,y:6,c:'W'},{x:12,y:7,c:'W'}],
+        ],
+        cleric: [
+          [{x:2,y:3,c:'W'},{x:2,y:4,c:'W'},{x:2,y:5,c:'W'},{x:2,y:6,c:'W'},{x:2,y:7,c:'W'},{x:2,y:8,c:'W'}],
+          [{x:2,y:2,c:'W'},{x:2,y:3,c:'W'},{x:2,y:4,c:'W'},{x:2,y:5,c:'W'},{x:1,y:1,c:'X'},{x:2,y:1,c:'X'},{x:3,y:1,c:'X'}],
+          [{x:2,y:3,c:'W'},{x:2,y:4,c:'W'},{x:0,y:4,c:'X'},{x:1,y:3,c:'X'},{x:1,y:5,c:'X'},{x:0,y:3,c:'X'},{x:0,y:5,c:'X'},{x:1,y:2,c:'X'},{x:1,y:6,c:'X'},{x:0,y:2,c:'X'}],
+          [{x:2,y:3,c:'W'},{x:2,y:4,c:'W'},{x:2,y:5,c:'W'},{x:2,y:6,c:'W'},{x:2,y:7,c:'W'},{x:2,y:8,c:'W'}],
+        ],
+        ranger: [
+          [{x:2,y:5,c:'W'},{x:1,y:6,c:'W'},{x:1,y:7,c:'W'},{x:1,y:8,c:'W'},{x:2,y:9,c:'W'}],
+          [{x:2,y:5,c:'W'},{x:1,y:6,c:'W'},{x:1,y:7,c:'W'},{x:1,y:8,c:'W'},{x:2,y:9,c:'W'},{x:4,y:7,c:'X'}],
+          [{x:2,y:5,c:'W'},{x:1,y:6,c:'W'},{x:1,y:7,c:'W'},{x:1,y:8,c:'W'},{x:2,y:9,c:'W'},{x:0,y:7,c:'X'}],
+          [{x:2,y:5,c:'W'},{x:1,y:6,c:'W'},{x:1,y:7,c:'W'},{x:1,y:8,c:'W'},{x:2,y:9,c:'W'}],
+        ],
+        berserker: [
+          [{x:1,y:3,c:'W'},{x:1,y:4,c:'W'},{x:1,y:5,c:'W'},{x:1,y:6,c:'W'},{x:1,y:7,c:'W'},{x:0,y:2,c:'X'},{x:1,y:2,c:'W'},{x:2,y:2,c:'X'}],
+          [{x:3,y:0,c:'W'},{x:4,y:0,c:'W'},{x:3,y:1,c:'W'},{x:2,y:0,c:'X'},{x:5,y:0,c:'X'},{x:2,y:1,c:'X'},{x:5,y:1,c:'X'}],
+          [{x:0,y:5,c:'W'},{x:1,y:6,c:'W'},{x:2,y:7,c:'W'},{x:3,y:8,c:'W'},{x:0,y:4,c:'X'},{x:0,y:6,c:'X'},{x:1,y:5,c:'X'},{x:1,y:7,c:'X'}],
+          [{x:1,y:4,c:'W'},{x:1,y:5,c:'W'},{x:1,y:6,c:'W'},{x:1,y:7,c:'W'},{x:0,y:3,c:'X'},{x:1,y:3,c:'W'},{x:2,y:3,c:'X'}],
+        ],
+      };
+      return (w[cls] || w.warrior)[frame] || [];
+    }
+
+    function generateCharacterSprite(className) {
+      const pal = CLASS_PALETTES[className] || CLASS_PALETTES.warrior;
+      const spriteData = CLASS_SPRITES[className] || CLASS_SPRITES.warrior;
+      const W = 16, H = 16;
+
+      const canvas = document.createElement('canvas');
+      canvas.width = W * 6;
+      canvas.height = H * 4;
+      const ctx = canvas.getContext('2d');
+      ctx.imageSmoothingEnabled = false;
+
+      // Parse base idle pose with weapon/shield overlays
+      const baseGrid = parseSpriteGrid(spriteData.idle);
+      applyOverlays(baseGrid, spriteData.weaponIdle);
+      if (spriteData.shieldIdle) applyOverlays(baseGrid, spriteData.shieldIdle);
+
+      // --- ROW 0: Idle (6 frames, breathing bounce) ---
+      const idleY = [0, 0, -1, -1, 0, 0];
+      for (let f = 0; f < 6; f++) {
+        let g = shiftGrid(baseGrid, 0, idleY[f]);
+        g = addOutlines(g);
+        drawSpriteFrame(ctx, g, pal, f * W, 0);
+      }
+
+      // --- ROW 1: Attack (4 frames: ready, windup, strike, recover) ---
+      const atkS = [{dx:0,dy:0},{dx:-1,dy:-1},{dx:-2,dy:0},{dx:-1,dy:0}];
+      for (let f = 0; f < 4; f++) {
+        let g = parseSpriteGrid(spriteData.idle);
+        if (spriteData.shieldIdle && f !== 2) applyOverlays(g, spriteData.shieldIdle);
+        const aw = getAttackWeaponOverlay(className, f);
+        g = shiftGrid(g, atkS[f].dx, atkS[f].dy);
+        applyOverlays(g, aw.map(o => ({x:o.x+atkS[f].dx, y:o.y+atkS[f].dy, c:o.c})));
+        g = addOutlines(g);
+        drawSpriteFrame(ctx, g, pal, f * W, H);
+      }
+
+      // --- ROW 2: Hit (2 frames, recoil + white flash) ---
+      for (let f = 0; f < 2; f++) {
+        let g = parseSpriteGrid(spriteData.idle);
+        applyOverlays(g, spriteData.weaponIdle);
+        g = shiftGrid(g, f + 1, 0);
+        g = addOutlines(g);
+        drawSpriteFrame(ctx, g, pal, f * W, H * 2);
+        if (f === 0) {
+          ctx.fillStyle = 'rgba(255,255,255,0.3)';
+          for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+            if (g[y][x] !== '.' && g[y][x] !== 'O') ctx.fillRect(f*W+x, H*2+y, 1, 1);
+          }
+        }
+      }
+
+      // --- ROW 3: Death (4 frames: slump, lean, fall, fallen) ---
+      for (let f = 0; f < 4; f++) {
+        if (f < 3) {
+          let g = parseSpriteGrid(spriteData.idle);
+          applyOverlays(g, spriteData.weaponIdle);
+          g = shiftGrid(g, f, f);
+          g = addOutlines(g);
+          const dim = 1.0 - f * 0.15;
+          for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+            if (g[y][x] === '.') continue;
+            let c = resolveZoneColor(g[y][x], pal, x, y);
+            if (c && dim < 1) c = darkenColor(c, dim);
+            if (c) { ctx.fillStyle = c; ctx.fillRect(f*W+x, H*3+y, 1, 1); }
+          }
+        } else {
+          // Fallen sideways on ground
+          const dg = parseSpriteGrid(spriteData.idle);
+          applyOverlays(dg, spriteData.weaponIdle);
+          const drawn = Array.from({length:16}, () => Array(16).fill(false));
+          for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+            if (dg[y][x] === '.' || dg[y][x] === 'O') continue;
+            const nx = Math.min(15, Math.max(0, y));
+            const ny = Math.min(15, Math.max(0, 10 + Math.floor((15-x)/3)));
+            let c = resolveZoneColor(dg[y][x], pal, x, y);
+            if (c) { ctx.fillStyle = darkenColor(c, 0.55); ctx.fillRect(3*W+nx, H*3+ny, 1, 1); drawn[ny][nx] = true; }
+          }
+          // Outline for death frame
+          const ol = pal.outline || '#000000';
+          for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+            if (drawn[y][x]) continue;
+            for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+              if (dy===0 && dx===0) continue;
+              const ny=y+dy, nx=x+dx;
+              if (ny>=0 && ny<16 && nx>=0 && nx<16 && drawn[ny][nx]) {
+                ctx.fillStyle = ol; ctx.fillRect(3*W+x, H*3+y, 1, 1); dy=2; break;
+              }
+            }
+          }
+        }
+      }
+
+      const img = new Image();
+      img.src = canvas.toDataURL('image/png');
+      return img;
+    }
+
+    let procSpriteCounter = 0;
+
+    function initCanvas() {
+      try {
+        displayCtx = displayCanvas.getContext('2d');
+        if (!displayCtx) throw new Error('no 2d context');
+
+        offscreen = document.createElement('canvas');
+        offscreen.width = GAME_W;
+        offscreen.height = GAME_H;
+        gameCtx = offscreen.getContext('2d');
+        gameCtx.imageSmoothingEnabled = false;
+
+        resizeDisplayCanvas();
+        useCanvas = true;
+        return true;
+      } catch (e) {
+        useCanvas = false;
+        return false;
+      }
+    }
+
+    function resizeDisplayCanvas() {
+      if (!displayCtx) return;
+      const rect = canvasContainer.getBoundingClientRect();
+      const scaleX = Math.floor(rect.width / GAME_W) || 1;
+      const scaleY = Math.floor(rect.height / GAME_H) || 1;
+      const scale = Math.max(1, Math.min(scaleX, scaleY));
+
+      displayCanvas.width = GAME_W * scale;
+      displayCanvas.height = GAME_H * scale;
+      displayCtx.imageSmoothingEnabled = false;
+    }
+
+    // ==================================================================
+    // BATTLE BACKGROUND (image-based with procedural fallback)
+    // ==================================================================
+
+    // Background image paths (CC0 licensed from OpenGameArt)
+    const BG_IMAGE_PATHS = [
+      'backgrounds/nightBackground.png',
+      'backgrounds/fallbackground.png',
+      'backgrounds/background.png',
+      'backgrounds/snowbackground_001.png',
+      'backgrounds/snowbackground_002.png',
+      'backgrounds/snowbackground_003.png',
+    ];
+
+    const bgImages = [];        // loaded Image objects
+    let bgImagesLoaded = false;
+    let currentBgIndex = 0;
+
+    // Load all background images
+    function loadBackgroundImages() {
+      let loaded = 0;
+      const total = BG_IMAGE_PATHS.length;
+      for (const path of BG_IMAGE_PATHS) {
+        const img = new Image();
+        img.onload = () => {
+          loaded++;
+          if (loaded === total) bgImagesLoaded = true;
+        };
+        img.onerror = () => {
+          loaded++;
+          // Mark as null so we skip it
+          const idx = bgImages.indexOf(img);
+          if (idx !== -1) bgImages[idx] = null;
+          if (loaded === total) bgImagesLoaded = true;
+        };
+        img.src = path;
+        bgImages.push(img);
+      }
+    }
+
+    // Rotate to next background (called on boss spawn)
+    function rotateBackground() {
+      const validIndices = bgImages.map((img, i) => img ? i : -1).filter(i => i !== -1);
+      if (validIndices.length === 0) return;
+      // Pick next valid index, wrapping around
+      const currentPos = validIndices.indexOf(currentBgIndex);
+      const nextPos = (currentPos + 1) % validIndices.length;
+      currentBgIndex = validIndices[nextPos];
+    }
+
+    // Procedural fallback: starfield + nebulae
+    const bgStars = [];
+    const bgNebulae = [];
+
+    function initBackground() {
+      // Load background images
+      loadBackgroundImages();
+
+      // Also init procedural fallback
+      bgStars.length = 0;
+      bgNebulae.length = 0;
+      for (let i = 0; i < 120; i++) {
+        bgStars.push({
+          x: Math.random() * GAME_W,
+          y: Math.random() * GAME_H,
+          size: Math.random() * 2 + 0.5,
+          speed: Math.random() * 0.5 + 0.1,
+          brightness: Math.random() * 155 + 100,
+        });
+      }
+      for (let i = 0; i < 5; i++) {
+        bgNebulae.push({
+          x: Math.random() * GAME_W,
+          y: Math.random() * GAME_H,
+          radius: Math.random() * 60 + 30,
+          r: Math.floor(Math.random() * 60 + 20),
+          g: Math.floor(Math.random() * 30),
+          b: Math.floor(Math.random() * 80 + 40),
+          speed: Math.random() * 0.2 + 0.05,
+        });
+      }
+    }
+
+    function renderProceduralBackground(ctx, time) {
+      // Dark gradient base
+      const grad = ctx.createLinearGradient(0, 0, 0, GAME_H);
+      grad.addColorStop(0, '#0a0020');
+      grad.addColorStop(0.5, '#150040');
+      grad.addColorStop(1, '#0d0030');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, GAME_W, GAME_H);
+
+      // Nebulae
+      for (const n of bgNebulae) {
+        const ny = ((n.y + time * n.speed * 0.01) % (GAME_H + n.radius * 2)) - n.radius;
+        const g = ctx.createRadialGradient(n.x, ny, 0, n.x, ny, n.radius);
+        g.addColorStop(0, `rgba(${n.r},${n.g},${n.b},0.15)`);
+        g.addColorStop(1, 'transparent');
+        ctx.fillStyle = g;
+        ctx.fillRect(n.x - n.radius, ny - n.radius, n.radius * 2, n.radius * 2);
+      }
+
+      // Stars
+      for (const s of bgStars) {
+        const sy = ((s.y + time * s.speed * 0.02) % GAME_H);
+        const twinkle = Math.sin(time * 0.003 + s.x) * 30;
+        const b = Math.floor(Math.min(255, s.brightness + twinkle));
+        ctx.fillStyle = `rgb(${b},${b},${Math.min(255, b + 30)})`;
+        ctx.fillRect(Math.floor(s.x), Math.floor(sy), Math.ceil(s.size), Math.ceil(s.size));
+      }
+    }
+
+    function renderBackground(ctx, time) {
+      const img = bgImages[currentBgIndex];
+
+      // Use image background if available, otherwise procedural fallback
+      if (bgImagesLoaded && img && img.complete && img.naturalWidth > 0) {
+        // Crop a section from the wide parallax image to fill 256x224.
+        // Target aspect ratio is GAME_W/GAME_H (256/224 ~ 1.143).
+        // Source images are very wide (parallax), so we pick a crop region
+        // that matches the target aspect ratio and center it vertically.
+        const targetAspect = GAME_W / GAME_H;
+        const srcW = img.naturalWidth;
+        const srcH = img.naturalHeight;
+
+        // Crop height = full image height; crop width = height * targetAspect
+        let cropH = srcH;
+        let cropW = Math.floor(cropH * targetAspect);
+
+        // If the image is narrower than the crop width, fit by width instead
+        if (cropW > srcW) {
+          cropW = srcW;
+          cropH = Math.floor(srcW / targetAspect);
+        }
+
+        // Center the crop horizontally (with slow scroll over time for parallax feel)
+        const maxScrollX = srcW - cropW;
+        const scrollSpeed = 0.003; // pixels per ms of time
+        const scrollX = maxScrollX > 0
+          ? Math.floor((time * scrollSpeed) % (maxScrollX * 2))
+          : 0;
+        // Ping-pong scroll: go right then left
+        const sx = scrollX <= maxScrollX ? scrollX : maxScrollX * 2 - scrollX;
+
+        // Center crop vertically
+        const sy = Math.floor((srcH - cropH) / 2);
+
+        ctx.drawImage(img, sx, sy, cropW, cropH, 0, 0, GAME_W, GAME_H);
+
+        // Apply a subtle dark vignette overlay for battle atmosphere
+        const vignette = ctx.createRadialGradient(
+          GAME_W / 2, GAME_H / 2, GAME_W * 0.3,
+          GAME_W / 2, GAME_H / 2, GAME_W * 0.7
+        );
+        vignette.addColorStop(0, 'rgba(0,0,0,0)');
+        vignette.addColorStop(1, 'rgba(0,0,0,0.5)');
+        ctx.fillStyle = vignette;
+        ctx.fillRect(0, 0, GAME_W, GAME_H);
+      } else {
+        // Procedural fallback (starfield + nebulae)
+        renderProceduralBackground(ctx, time);
+      }
+    }
+
+    // ==================================================================
+    // CANVAS SPRITE RENDERER
+    // ==================================================================
+    function drawSprite(ctx, img, config, animRow, frame, destX, destY, scale, flipX) {
+      if (!img) return;
+      const fw = config.frameW;
+      const fh = config.frameH;
+      const sx = frame * fw;
+      const sy = animRow * fh;
+
+      ctx.save();
+      if (flipX) {
+        ctx.translate(destX + fw * scale, destY);
+        ctx.scale(-1, 1);
+        ctx.drawImage(img, sx, sy, fw, fh, 0, 0, fw * scale, fh * scale);
+      } else {
+        ctx.drawImage(img, sx, sy, fw, fh, destX, destY, fw * scale, fh * scale);
+      }
+      ctx.restore();
+    }
+
+    // ==================================================================
+    // CANVAS PARTY CHARACTERS
+    // ==================================================================
+    // Party positions on canvas (right side, staggered like FF6)
+    function getPartyPosition(index) {
+      const baseX = GAME_W - 80;
+      const baseY = 50;
+      const stagger = [
+        { x: 0, y: 0 },
+        { x: 12, y: 30 },
+        { x: -8, y: 60 },
+        { x: 16, y: 90 },
+        { x: -4, y: 120 },
+        { x: 10, y: 140 },
+        { x: -2, y: 160 },
+        { x: 14, y: 180 },
+      ];
+      const s = stagger[index % stagger.length] || { x: 0, y: index * 28 };
+      return { x: baseX + s.x, y: baseY + s.y };
+    }
+
+    // Character state machine states
+    const CHAR_IDLE = 'IDLE';
+    const CHAR_STEPPING_FORWARD = 'STEPPING_FORWARD';
+    const CHAR_ATTACKING = 'ATTACKING';
+    const CHAR_STEPPING_BACK = 'STEPPING_BACK';
+
+    class CanvasCharacter {
+      constructor(task, index) {
+        this.task = task;
+        this.index = index;
+        const pos = getPartyPosition(index);
+        this.homeX = pos.x;
+        this.homeY = pos.y;
+        this.x = pos.x;
+        this.y = pos.y;
+        this.state = CHAR_IDLE;
+        this.stateTimer = 0;
+        this.frame = Math.floor(Math.random() * 6); // Random start frame for variety
+        this.animRow = 0; // idle
+        this.scale = 3;
+        this.opacity = 0;
+        this.summonTimer = 600; // ms for summon fade-in
+        this.brightness = 3; // Start bright for summon
+        this.unsummoning = false;
+        this.unsummonTimer = 0;
+        this.attackQueue = []; // Queued attack data
+        // Generate a unique procedural sprite for this character
+        const charClass = (task.character && task.character.class) || 'warrior';
+        const uniqueKey = `proc_${charClass}_${procSpriteCounter++}`;
+        spriteImages[uniqueKey] = generateCharacterSprite(charClass);
+        this.spriteKey = uniqueKey;
+      }
+
+      queueAttack(data) {
+        this.attackQueue.push(data);
+      }
+
+      update(dt) {
+        // Summon animation
+        if (this.summonTimer > 0) {
+          this.summonTimer -= dt;
+          const t = 1 - Math.max(0, this.summonTimer / 600);
+          this.opacity = t;
+          this.brightness = 1 + (1 - t) * 2;
+          if (this.summonTimer <= 0) {
+            this.opacity = 1;
+            this.brightness = 1;
+          }
+          return;
+        }
+
+        // Unsummon animation
+        if (this.unsummoning) {
+          this.unsummonTimer += dt;
+          const t = Math.min(1, this.unsummonTimer / 500);
+          this.opacity = 1 - t;
+          this.brightness = 1 + t * 2;
+          return;
+        }
+
+        // State machine
+        switch (this.state) {
+          case CHAR_IDLE:
+            this.animRow = 0;
+            // Check attack queue
+            if (this.attackQueue.length > 0) {
+              this.state = CHAR_STEPPING_FORWARD;
+              this.stateTimer = 0;
+              this.currentAttack = this.attackQueue.shift();
+            }
+            break;
+
+          case CHAR_STEPPING_FORWARD:
+            this.stateTimer += dt;
+            const fwdProgress = Math.min(1, this.stateTimer / 150);
+            // Lerp toward boss
+            const targetX = bossCanvasX + 50;
+            this.x = this.homeX + (targetX - this.homeX) * fwdProgress;
+            if (fwdProgress >= 1) {
+              this.state = CHAR_ATTACKING;
+              this.stateTimer = 0;
+              this.animRow = SPRITE_CONFIG.characters.rows.attack;
+              this.frame = 0;
+              // Trigger effects at attack moment
+              if (this.currentAttack) {
+                triggerCanvasAttackEffects(this.currentAttack, bossCanvasX, bossCanvasY);
+              }
+            }
+            break;
+
+          case CHAR_ATTACKING:
+            this.stateTimer += dt;
+            if (this.stateTimer >= 400) {
+              this.state = CHAR_STEPPING_BACK;
+              this.stateTimer = 0;
+            }
+            break;
+
+          case CHAR_STEPPING_BACK:
+            this.stateTimer += dt;
+            const backProgress = Math.min(1, this.stateTimer / 300);
+            this.x = this.homeX + (bossCanvasX + 50 - this.homeX) * (1 - backProgress);
+            if (backProgress >= 1) {
+              this.x = this.homeX;
+              this.state = CHAR_IDLE;
+              this.animRow = 0;
+              this.currentAttack = null;
+            }
+            break;
+        }
+      }
+
+      render(ctx) {
+        if (this.opacity <= 0) return;
+        const img = spriteImages[this.spriteKey];
+        if (!img) return;
+
+        ctx.save();
+        ctx.globalAlpha = this.opacity;
+
+        // Brightness filter via compositing
+        if (this.brightness > 1.1) {
+          // Draw normal first
+          drawSprite(ctx, img, SPRITE_CONFIG.characters, this.animRow, this.frame,
+            Math.floor(this.x), Math.floor(this.y), this.scale, true);
+          // Overlay with lighter blend for brightness
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.globalAlpha = Math.min(1, (this.brightness - 1) * 0.5) * this.opacity;
+          drawSprite(ctx, img, SPRITE_CONFIG.characters, this.animRow, this.frame,
+            Math.floor(this.x), Math.floor(this.y), this.scale, true);
+          ctx.globalCompositeOperation = 'source-over';
+        } else {
+          drawSprite(ctx, img, SPRITE_CONFIG.characters, this.animRow, this.frame,
+            Math.floor(this.x), Math.floor(this.y), this.scale, true);
+        }
+
+        ctx.restore();
+      }
+    }
+
+    // ==================================================================
+    // CANVAS BOSS
+    // ==================================================================
+    let bossCanvasX = 30;
+    let bossCanvasY = 60;
+    let bossFrame = 0;
+    let bossDying = false;
+    let bossDeathTimer = 0;
+    let bossOpacity = 1;
+    let bossBrightness = 1;
+    let bossShakeX = 0;
+    let bossShakeY = 0;
+
+    function getBossSpriteKey(killCount) {
+      const idx = ((killCount || 0) % NUM_BOSS_TYPES) + 1;
+      return `boss-${idx}`;
+    }
+
+    // Boss idle animation time tracker (independent of frame count)
+    let bossIdleTime = 0;
+
+    function renderBoss(ctx) {
+      const key = getBossSpriteKey(bossState ? bossState.killCount : 0);
+      const img = spriteImages[key];
+      if (!img) return;
+
+      const bossScale = 4;
+      const spriteW = SPRITE_CONFIG.bosses.frameW * bossScale;
+      const spriteH = SPRITE_CONFIG.bosses.frameH * bossScale;
+
+      // --- Programmatic idle animation ---
+      // 1. Sinusoidal vertical bob: 1.5px amplitude, ~2s period
+      const bobAmplitude = 1.5;
+      const bobPeriod = 2000; // ms
+      const bobOffset = Math.sin(bossIdleTime * (2 * Math.PI / bobPeriod)) * bobAmplitude;
+
+      // 2. Subtle scaleY breathing: oscillate between 1.0 and 1.02, ~3s period
+      const breathPeriod = 3000;
+      const breathScale = 1.0 + 0.02 * Math.sin(bossIdleTime * (2 * Math.PI / breathPeriod));
+
+      // 3. Shadow beneath boss: dark ellipse that syncs with bob
+      const shadowCenterX = bossCanvasX + spriteW / 2;
+      const shadowY = bossCanvasY + spriteH + 2; // Just below boss feet
+      const shadowBaseWidth = spriteW * 0.5;
+      // Shadow expands when boss bobs up, contracts when boss bobs down
+      const shadowWidth = shadowBaseWidth + bobOffset * -2;
+      const shadowHeight = 4;
+      const shadowOpacity = (0.35 + bobOffset * -0.05) * bossOpacity;
+
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, shadowOpacity);
+      ctx.fillStyle = '#000';
+      ctx.beginPath();
+      ctx.ellipse(shadowCenterX, shadowY, Math.max(1, shadowWidth / 2), shadowHeight, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      // Compute final position with bob + shake
+      const bx = Math.floor(bossCanvasX + bossShakeX);
+      const by = Math.floor(bossCanvasY + bossShakeY + bobOffset);
+
+      ctx.save();
+      ctx.globalAlpha = bossOpacity;
+
+      // Apply breathing scaleY around the boss's bottom-center
+      // This makes the boss stretch/compress from the feet up
+      const centerX = bx + spriteW / 2;
+      const bottomY = by + spriteH;
+      ctx.translate(centerX, bottomY);
+      ctx.scale(1, breathScale);
+      ctx.translate(-centerX, -bottomY);
+
+      drawSprite(ctx, img, SPRITE_CONFIG.bosses, 0, bossFrame, bx, by, bossScale, false);
+
+      // 4. Eye/rune glow pulse: subtle glow overlay using 'lighter' compositing
+      const glowPeriod = 2500; // slightly offset from bob for organic feel
+      const glowIntensity = 0.08 + 0.06 * Math.sin(bossIdleTime * (2 * Math.PI / glowPeriod));
+      if (!bossDying && bossOpacity > 0.5) {
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = glowIntensity * bossOpacity;
+        drawSprite(ctx, img, SPRITE_CONFIG.bosses, 0, bossFrame, bx, by, bossScale, false);
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = bossOpacity;
+      }
+
+      // Hit brightness flash (existing behavior preserved)
+      if (bossBrightness > 1.1) {
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = Math.min(1, (bossBrightness - 1) * 0.5) * bossOpacity;
+        drawSprite(ctx, img, SPRITE_CONFIG.bosses, 0, bossFrame, bx, by, bossScale, false);
+        ctx.globalCompositeOperation = 'source-over';
+      }
+
+      ctx.restore();
+    }
+
+    // ==================================================================
+    // CANVAS DAMAGE NUMBERS (pooled)
+    // ==================================================================
+    const MAX_DAMAGE_NUMBERS = 20;
+    const damageNumberPool = [];
+
+    function spawnDamageNumber(value, x, y, isCrit) {
+      // Find inactive or create
+      let dn = damageNumberPool.find(d => !d.active);
+      if (!dn) {
+        if (damageNumberPool.length >= MAX_DAMAGE_NUMBERS) {
+          dn = damageNumberPool[0]; // Recycle oldest
+        } else {
+          dn = {};
+          damageNumberPool.push(dn);
+        }
+      }
+      dn.active = true;
+      dn.value = value;
+      dn.x = x + (Math.random() - 0.5) * 40;
+      dn.y = y;
+      dn.vy = -1.5;
+      dn.opacity = 1;
+      dn.isCrit = isCrit;
+      dn.age = 0;
+    }
+
+    function updateDamageNumbers(dt) {
+      for (const dn of damageNumberPool) {
+        if (!dn.active) continue;
+        dn.age += dt;
+        dn.y += dn.vy;
+        dn.vy -= 0.02; // decelerate
+        if (dn.age > 400) {
+          dn.opacity -= dt / 400;
+        }
+        if (dn.opacity <= 0 || dn.age > 800) {
+          dn.active = false;
+        }
+      }
+    }
+
+    function renderDamageNumbers(ctx) {
+      for (const dn of damageNumberPool) {
+        if (!dn.active) continue;
+        const text = dn.isCrit ? dn.value + '!' : String(dn.value);
+        const fontSize = dn.isCrit ? 10 : 8;
+
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, dn.opacity);
+        ctx.font = `${fontSize}px PressStart2P, monospace`;
+        ctx.textAlign = 'center';
+
+        // Black outline (4 directions)
+        ctx.fillStyle = '#000';
+        ctx.fillText(text, dn.x - 1, dn.y);
+        ctx.fillText(text, dn.x + 1, dn.y);
+        ctx.fillText(text, dn.x, dn.y - 1);
+        ctx.fillText(text, dn.x, dn.y + 1);
+
+        // Fill
+        ctx.fillStyle = dn.isCrit ? '#FF4444' : '#F8F8F8';
+        ctx.fillText(text, dn.x, dn.y);
+        ctx.restore();
+      }
+    }
+
+    // ==================================================================
+    // CANVAS EFFECTS (screen flash, shake, slash effect)
+    // ==================================================================
+    let screenFlashOpacity = 0;
+    let screenShakeTimer = 0;
+    let screenShakeIntensity = 0;
+
+    // Slash effect sprites
+    const slashEffects = [];
+
+    function triggerCanvasAttackEffects(attackData, targetX, targetY) {
+      // Screen flash
+      screenFlashOpacity = 0.7;
+
+      // Slash effect at boss
+      slashEffects.push({
+        x: targetX + 20,
+        y: targetY + 20,
+        frame: 0,
+        timer: 0,
+        active: true,
+      });
+
+      // Screen shake
+      screenShakeTimer = 300;
+      screenShakeIntensity = attackData.isCrit ? 5 : 3;
+
+      // Damage number
+      spawnDamageNumber(attackData.amount, targetX + 60, targetY + 40, attackData.isCrit);
+
+      // Boss hit flash
+      bossBrightness = 2.5;
+
+      // Sound
+      if (attackData.isCrit) {
+        playCritSound();
+      } else {
+        playSlashSound();
+      }
+    }
+
+    function updateEffects(dt) {
+      // Screen flash decay
+      if (screenFlashOpacity > 0) {
+        screenFlashOpacity -= dt / 150;
+        if (screenFlashOpacity < 0) screenFlashOpacity = 0;
+      }
+
+      // Screen shake
+      if (screenShakeTimer > 0) {
+        screenShakeTimer -= dt;
+        const intensity = screenShakeIntensity * (screenShakeTimer / 300);
+        bossShakeX = (Math.random() - 0.5) * intensity * 2;
+        bossShakeY = (Math.random() - 0.5) * intensity * 2;
+        if (screenShakeTimer <= 0) {
+          bossShakeX = 0;
+          bossShakeY = 0;
+        }
+      }
+
+      // Boss brightness decay
+      if (bossBrightness > 1) {
+        bossBrightness -= dt / 100;
+        if (bossBrightness < 1) bossBrightness = 1;
+      }
+
+      // Boss death animation
+      if (bossDying) {
+        bossDeathTimer += dt;
+        const t = bossDeathTimer / 1000;
+        if (t < 0.2) {
+          bossBrightness = 3;
+        } else if (t < 0.5) {
+          bossBrightness = 1 + Math.sin(t * 20) * 1;
+          bossShakeX = (Math.random() - 0.5) * 6;
+          bossShakeY = (Math.random() - 0.5) * 6;
+        } else {
+          bossOpacity = Math.max(0, 1 - (t - 0.5) * 2);
+          bossBrightness = 1.5;
+        }
+        if (t >= 1) {
+          bossDying = false;
+          bossDeathTimer = 0;
+          bossShakeX = 0;
+          bossShakeY = 0;
+        }
+      }
+
+      // Slash effects
+      for (const s of slashEffects) {
+        if (!s.active) continue;
+        s.timer += dt;
+        s.frame = Math.floor(s.timer / 80) % 4;
+        if (s.timer > 320) s.active = false;
+      }
+    }
+
+    function renderFlash(ctx) {
+      if (screenFlashOpacity > 0) {
+        ctx.save();
+        ctx.globalAlpha = screenFlashOpacity;
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, 0, GAME_W, GAME_H);
+        ctx.restore();
+      }
+    }
+
+    function renderSlashEffects(ctx) {
+      const img = spriteImages['slash'];
+      if (!img) return;
+      for (const s of slashEffects) {
+        if (!s.active) continue;
+        drawSprite(ctx, img, SPRITE_CONFIG.effects, 0, s.frame, s.x, s.y, 4, false);
+      }
+    }
+
+    // ==================================================================
+    // CANVAS VICTORY TEXT
+    // ==================================================================
+    let victoryTimer = 0;
+    let showingVictory = false;
+
+    function triggerVictoryCanvas() {
+      showingVictory = true;
+      victoryTimer = 0;
+    }
+
+    function updateVictory(dt) {
+      if (!showingVictory) return;
+      victoryTimer += dt;
+      if (victoryTimer >= 2500) {
+        showingVictory = false;
+        victoryTimer = 0;
+      }
+    }
+
+    function renderVictory(ctx) {
+      if (!showingVictory) return;
+      const t = victoryTimer / 2500;
+      let alpha = 0;
+      let scale = 1;
+      if (t < 0.15) {
+        alpha = t / 0.15;
+        scale = 0.5 + (t / 0.15) * 0.7;
+      } else if (t < 0.3) {
+        alpha = 1;
+        scale = 1.2 - ((t - 0.15) / 0.15) * 0.2;
+      } else if (t < 0.7) {
+        alpha = 1;
+        scale = 1;
+      } else {
+        alpha = 1 - (t - 0.7) / 0.3;
+        scale = 1 + (t - 0.7) / 0.3 * 0.1;
+      }
+
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.font = '16px PressStart2P, monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      const cx = GAME_W / 2;
+      const cy = GAME_H / 2 - 20;
+
+      // Glow
+      ctx.shadowColor = 'rgba(212, 175, 55, 0.8)';
+      ctx.shadowBlur = 10;
+
+      // Outline
+      ctx.fillStyle = '#000';
+      for (let ox = -2; ox <= 2; ox++) {
+        for (let oy = -2; oy <= 2; oy++) {
+          if (ox || oy) ctx.fillText('VICTORY', cx + ox, cy + oy);
+        }
+      }
+
+      ctx.fillStyle = '#FFD700';
+      ctx.fillText('VICTORY', cx, cy);
+      ctx.restore();
+    }
+
+    // ==================================================================
+    // GAME LOOP
+    // ==================================================================
+    function gameLoop(timestamp) {
+      if (!gameRunning) return;
+
+      // Pause when tab is hidden
+      if (document.hidden) {
+        lastTime = timestamp;
+        requestAnimationFrame(gameLoop);
+        return;
+      }
+
+      const dt = lastTime ? Math.min(timestamp - lastTime, 100) : 16; // Cap dt to prevent spiral
+      lastTime = timestamp;
+      spriteTimer += dt;
+
+      // Update sprite frames at SNES rate
+      let advanceFrame = false;
+      if (spriteTimer >= SPRITE_INTERVAL) {
+        spriteTimer -= SPRITE_INTERVAL;
+        advanceFrame = true;
+      }
+
+      // Update boss frame
+      if (advanceFrame) {
+        bossFrame = (bossFrame + 1) % SPRITE_CONFIG.bosses.frameCounts.idle;
+      }
+
+      // Update party characters
+      for (const [, entry] of party) {
+        if (!entry.canvasChar) continue;
+        entry.canvasChar.update(dt);
+        if (advanceFrame && entry.canvasChar.state === CHAR_IDLE) {
+          const cfg = SPRITE_CONFIG.characters;
+          const row = entry.canvasChar.animRow;
+          const rowName = Object.keys(cfg.rows).find(k => cfg.rows[k] === row) || 'idle';
+          const maxFrames = cfg.frameCounts[rowName] || 6;
+          entry.canvasChar.frame = (entry.canvasChar.frame + 1) % maxFrames;
+        }
+        if (advanceFrame && entry.canvasChar.state === CHAR_ATTACKING) {
+          entry.canvasChar.frame = Math.min(
+            entry.canvasChar.frame + 1,
+            SPRITE_CONFIG.characters.frameCounts.attack - 1
+          );
+        }
+      }
+
+      // Update boss idle animation time
+      if (!bossDying) {
+        bossIdleTime += dt;
+      }
+
+      // Update effects
+      updateEffects(dt);
+      updateDamageNumbers(dt);
+      updateVictory(dt);
+
+      // Clean up finished unsummon animations
+      for (const [id, entry] of party) {
+        if (entry.canvasChar && entry.canvasChar.unsummoning && entry.canvasChar.opacity <= 0) {
+          party.delete(id);
+          updatePartyCount();
+          rebuildStatusPanel();
+        }
+      }
+
+      // --- RENDER ---
+      gameCtx.clearRect(0, 0, GAME_W, GAME_H);
+
+      // Background
+      renderBackground(gameCtx, timestamp);
+
+      // Boss
+      renderBoss(gameCtx);
+
+      // Slash effects
+      renderSlashEffects(gameCtx);
+
+      // Party characters
+      const sortedParty = [...party.values()].filter(e => e.canvasChar);
+      sortedParty.sort((a, b) => a.canvasChar.y - b.canvasChar.y);
+      for (const entry of sortedParty) {
+        entry.canvasChar.render(gameCtx);
+      }
+
+      // Damage numbers
+      renderDamageNumbers(gameCtx);
+
+      // Screen flash
+      renderFlash(gameCtx);
+
+      // Victory text
+      renderVictory(gameCtx);
+
+      // Scale to display
+      displayCtx.clearRect(0, 0, displayCanvas.width, displayCanvas.height);
+      displayCtx.imageSmoothingEnabled = false;
+      displayCtx.drawImage(offscreen, 0, 0, displayCanvas.width, displayCanvas.height);
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    // ==================================================================
+    // AUDIO SYSTEM — SNES-authentic with echo
+    // ==================================================================
+    function initAudio() {
+      if (audioCtx) return;
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+      // Master gain
+      masterGain = audioCtx.createGain();
+      masterGain.gain.value = 1.0;
+      masterGain.connect(audioCtx.destination);
+
+      // SNES echo chain
+      const delay = audioCtx.createDelay(1.0);
+      delay.delayTime.value = 0.1;
+      const feedback = audioCtx.createGain();
+      feedback.gain.value = 0.3;
+      const lpf = audioCtx.createBiquadFilter();
+      lpf.type = 'lowpass';
+      lpf.frequency.value = 4000;
+      echoWet = audioCtx.createGain();
+      echoWet.gain.value = 0.25;
+
+      masterGain.connect(delay);
+      delay.connect(lpf);
+      lpf.connect(feedback);
+      feedback.connect(delay);
+      lpf.connect(echoWet);
+      echoWet.connect(audioCtx.destination);
+    }
+
+    function getAudioDest() {
+      return masterGain || audioCtx.destination;
+    }
+
+    // --- Sword slash (noise burst + tonal sweep) ---
+    function playSlashSound() {
+      if (!audioCtx || muted) return;
+      const now = audioCtx.currentTime;
+      const dest = getAudioDest();
+
+      // White noise "whoosh"
+      const bufSize = Math.floor(audioCtx.sampleRate * 0.15);
+      const buf = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < bufSize; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / bufSize);
+      const noise = audioCtx.createBufferSource();
+      noise.buffer = buf;
+      const bpf = audioCtx.createBiquadFilter();
+      bpf.type = 'bandpass';
+      bpf.frequency.setValueAtTime(3000, now);
+      bpf.frequency.exponentialRampToValueAtTime(800, now + 0.1);
+      bpf.Q.value = 2;
+      const nGain = audioCtx.createGain();
+      nGain.gain.setValueAtTime(0.2, now);
+      nGain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+      noise.connect(bpf);
+      bpf.connect(nGain);
+      nGain.connect(dest);
+
+      // Tonal "shing"
+      const osc = audioCtx.createOscillator();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(600, now);
+      osc.frequency.exponentialRampToValueAtTime(200, now + 0.08);
+      const oGain = audioCtx.createGain();
+      oGain.gain.setValueAtTime(0.06, now);
+      oGain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+      osc.connect(oGain);
+      oGain.connect(dest);
+
+      noise.start(now);
+      noise.stop(now + 0.15);
+      osc.start(now);
+      osc.stop(now + 0.1);
+    }
+
+    // --- Critical hit (slash + sub-bass impact) ---
+    function playCritSound() {
+      if (!audioCtx || muted) return;
+      const now = audioCtx.currentTime;
+      const dest = getAudioDest();
+
+      // Slash component (louder)
+      const bufSize = Math.floor(audioCtx.sampleRate * 0.2);
+      const buf = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < bufSize; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / bufSize);
+      const noise = audioCtx.createBufferSource();
+      noise.buffer = buf;
+      const bpf = audioCtx.createBiquadFilter();
+      bpf.type = 'bandpass';
+      bpf.frequency.setValueAtTime(3500, now);
+      bpf.frequency.exponentialRampToValueAtTime(600, now + 0.12);
+      bpf.Q.value = 2;
+      const nGain = audioCtx.createGain();
+      nGain.gain.setValueAtTime(0.3, now);
+      nGain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+      noise.connect(bpf);
+      bpf.connect(nGain);
+      nGain.connect(dest);
+
+      // Shing (louder)
+      const osc = audioCtx.createOscillator();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(800, now);
+      osc.frequency.exponentialRampToValueAtTime(200, now + 0.1);
+      const oGain = audioCtx.createGain();
+      oGain.gain.setValueAtTime(0.1, now);
+      oGain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+      osc.connect(oGain);
+      oGain.connect(dest);
+
+      // Sub-bass impact
+      const sub = audioCtx.createOscillator();
+      sub.type = 'sine';
+      sub.frequency.setValueAtTime(100, now);
+      sub.frequency.exponentialRampToValueAtTime(40, now + 0.15);
+      const sGain = audioCtx.createGain();
+      sGain.gain.setValueAtTime(0.2, now);
+      sGain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+      sub.connect(sGain);
+      sGain.connect(dest);
+
+      noise.start(now);
+      noise.stop(now + 0.2);
+      osc.start(now);
+      osc.stop(now + 0.12);
+      sub.start(now);
+      sub.stop(now + 0.15);
+    }
+
+    // --- Summon (ascending sparkle + detuned chorus) ---
+    function playSummonSound() {
+      if (!audioCtx || muted) return;
+      const now = audioCtx.currentTime;
+      const dest = getAudioDest();
+
+      // Ascending tones with slight detune for chorus
+      const notes = [400, 600, 800];
+      notes.forEach((freq, i) => {
+        const t = now + i * 0.06;
+        // Main tone
+        const osc1 = audioCtx.createOscillator();
+        osc1.type = 'sine';
+        osc1.frequency.setValueAtTime(freq, t);
+        const g1 = audioCtx.createGain();
+        g1.gain.setValueAtTime(0.1, t);
+        g1.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+        osc1.connect(g1);
+        g1.connect(dest);
+        osc1.start(t);
+        osc1.stop(t + 0.12);
+
+        // Detuned second oscillator for chorus
+        const osc2 = audioCtx.createOscillator();
+        osc2.type = 'sine';
+        osc2.frequency.setValueAtTime(freq * 1.005, t); // Slight detune
+        const g2 = audioCtx.createGain();
+        g2.gain.setValueAtTime(0.06, t);
+        g2.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+        osc2.connect(g2);
+        g2.connect(dest);
+        osc2.start(t);
+        osc2.stop(t + 0.12);
+      });
+
+      // Noise sparkle burst
+      const bufSize = Math.floor(audioCtx.sampleRate * 0.1);
+      const buf = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < bufSize; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufSize, 3);
+      const noise = audioCtx.createBufferSource();
+      noise.buffer = buf;
+      const hpf = audioCtx.createBiquadFilter();
+      hpf.type = 'highpass';
+      hpf.frequency.value = 6000;
+      const nGain = audioCtx.createGain();
+      nGain.gain.setValueAtTime(0.08, now);
+      nGain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+      noise.connect(hpf);
+      hpf.connect(nGain);
+      nGain.connect(dest);
+      noise.start(now);
+      noise.stop(now + 0.1);
+    }
+
+    // --- Unsummon (descending with reverb) ---
+    function playUnsummonSound() {
+      if (!audioCtx || muted) return;
+      const now = audioCtx.currentTime;
+      const dest = getAudioDest();
+
+      const notes = [600, 400, 250];
+      notes.forEach((freq, i) => {
+        const t = now + i * 0.06;
+        const osc = audioCtx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, t);
+        const g = audioCtx.createGain();
+        g.gain.setValueAtTime(0.08, t);
+        g.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
+        osc.connect(g);
+        g.connect(dest);
+        osc.start(t);
+        osc.stop(t + 0.15);
+      });
+    }
+
+    // --- Boss death (3-layer: rumble + noise + sub-bass) ---
+    function playBossDeathSound() {
+      if (!audioCtx || muted) return;
+      const now = audioCtx.currentTime;
+      const dest = getAudioDest();
+
+      const osc1 = audioCtx.createOscillator();
+      osc1.type = 'sawtooth';
+      osc1.frequency.setValueAtTime(80, now);
+      osc1.frequency.exponentialRampToValueAtTime(30, now + 0.8);
+      const g1 = audioCtx.createGain();
+      g1.gain.setValueAtTime(0.12, now);
+      g1.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
+      osc1.connect(g1);
+      g1.connect(dest);
+
+      const bufSize = Math.floor(audioCtx.sampleRate * 0.6);
+      const buf = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < bufSize; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufSize, 2);
+      const noise = audioCtx.createBufferSource();
+      noise.buffer = buf;
+      const nGain = audioCtx.createGain();
+      nGain.gain.setValueAtTime(0.15, now);
+      nGain.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+      noise.connect(nGain);
+      nGain.connect(dest);
+
+      const sub = audioCtx.createOscillator();
+      sub.type = 'sine';
+      sub.frequency.setValueAtTime(60, now);
+      sub.frequency.exponentialRampToValueAtTime(20, now + 0.5);
+      const sGain = audioCtx.createGain();
+      sGain.gain.setValueAtTime(0.2, now);
+      sGain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+      sub.connect(sGain);
+      sGain.connect(dest);
+
+      osc1.start(now);
+      osc1.stop(now + 0.8);
+      noise.start(now);
+      noise.stop(now + 0.6);
+      sub.start(now);
+      sub.stop(now + 0.5);
+    }
+
+    // --- Victory fanfare (Eb Mixolydian, square waves) ---
+    function playVictoryFanfare() {
+      if (!audioCtx || muted) return;
+      const now = audioCtx.currentTime;
+      const dest = getAudioDest();
+
+      const Bb4 = 466.16, Ab4 = 415.30, C5 = 523.25, Eb5 = 622.25;
+      const melody = [
+        { n: Bb4, t: 0, d: 0.12 },
+        { n: Bb4, t: 0.15, d: 0.12 },
+        { n: Bb4, t: 0.30, d: 0.12 },
+        { n: Bb4, t: 0.45, d: 0.30 },
+        { n: Ab4, t: 0.80, d: 0.15 },
+        { n: Bb4, t: 1.00, d: 0.15 },
+        { n: Bb4, t: 1.20, d: 0.15 },
+        { n: C5, t: 1.40, d: 0.50 },
+        { n: Bb4, t: 2.00, d: 0.15 },
+        { n: C5, t: 2.20, d: 0.15 },
+        { n: Eb5, t: 2.40, d: 0.80 },
+      ];
+      melody.forEach(({ n, t, d }) => {
+        const osc = audioCtx.createOscillator();
+        osc.type = 'square';
+        osc.frequency.value = n;
+        const gain = audioCtx.createGain();
+        const st = now + t;
+        gain.gain.setValueAtTime(0, st);
+        gain.gain.linearRampToValueAtTime(0.08, st + 0.01);
+        gain.gain.setValueAtTime(0.08, st + d - 0.02);
+        gain.gain.linearRampToValueAtTime(0.001, st + d);
+        osc.connect(gain);
+        gain.connect(dest);
+        osc.start(st);
+        osc.stop(st + d + 0.01);
+      });
+    }
+
+    // --- Boss spawn sound (triangle drone + square stab) ---
+    function playBossSpawnSound() {
+      if (!audioCtx || muted) return;
+      const now = audioCtx.currentTime;
+      const dest = getAudioDest();
+
+      // Triangle bass drone
+      const osc1 = audioCtx.createOscillator();
+      osc1.type = 'triangle';
+      osc1.frequency.setValueAtTime(40, now);
+      osc1.frequency.exponentialRampToValueAtTime(80, now + 0.5);
+      const g1 = audioCtx.createGain();
+      g1.gain.setValueAtTime(0.1, now);
+      g1.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+      osc1.connect(g1);
+      g1.connect(dest);
+
+      // Square wave stab at the end
+      const osc2 = audioCtx.createOscillator();
+      osc2.type = 'square';
+      osc2.frequency.setValueAtTime(150, now + 0.35);
+      osc2.frequency.exponentialRampToValueAtTime(100, now + 0.5);
+      const g2 = audioCtx.createGain();
+      g2.gain.setValueAtTime(0, now);
+      g2.gain.setValueAtTime(0.08, now + 0.35);
+      g2.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+      osc2.connect(g2);
+      g2.connect(dest);
+
+      osc1.start(now);
+      osc1.stop(now + 0.5);
+      osc2.start(now + 0.35);
+      osc2.stop(now + 0.5);
+    }
+
+    // Init audio on first user interaction
+    document.addEventListener('click', initAudio, { once: true });
+    document.addEventListener('keydown', initAudio, { once: true });
+
+    // ==================================================================
+    // DOM REFS
+    // ==================================================================
+    const partyArea = document.getElementById('partyArea');
+    const emptyParty = document.getElementById('emptyParty');
+    const bossSprite = document.getElementById('bossSprite');
+    const bossNameDom = document.getElementById('bossNameDom');
+    const bossHpFillDom = document.getElementById('bossHpFillDom');
+    const bossHpGhostDom = document.getElementById('bossHpGhostDom');
+    const bossHpTextDom = document.getElementById('bossHpTextDom');
+    const bossMetaDom = document.getElementById('bossMetaDom');
+    const bossArea = document.getElementById('bossArea');
+    const battleScene = document.getElementById('battleScene');
+    const domFallback = document.getElementById('domFallback');
+
+    // Status panel refs
+    const statusPanel = document.getElementById('statusPanel');
+    const bossStatusName = document.getElementById('bossStatusName');
+    const bossBarFill = document.getElementById('bossBarFill');
+    const bossBarGhost = document.getElementById('bossBarGhost');
+    const bossHpNumbers = document.getElementById('bossHpNumbers');
+    const bossKillCount = document.getElementById('bossKillCount');
+    const partyRows = document.getElementById('partyRows');
+    const emptyStatus = document.getElementById('emptyStatus');
+
+    const partyCountEl = document.getElementById('partyCount');
+    const killCountEl = document.getElementById('killCount');
+    const muteBtn = document.getElementById('muteBtn');
+    const crtBtn = document.getElementById('crtBtn');
+    const themeSelect = document.getElementById('themeSelect');
+
+    // ==================================================================
+    // MUTE TOGGLE
+    // ==================================================================
+    muteBtn.addEventListener('click', () => {
+      initAudio();
+      muted = !muted;
+      muteBtn.textContent = muted ? 'Sound: OFF' : 'Sound: ON';
+    });
+
+    // ==================================================================
+    // CRT TOGGLE
+    // ==================================================================
+    function applyCRT() {
+      if (crtEnabled) {
+        canvasContainer.classList.add('crt-enabled');
+        crtBtn.textContent = 'CRT: ON';
+      } else {
+        canvasContainer.classList.remove('crt-enabled');
+        crtBtn.textContent = 'CRT: OFF';
+      }
+    }
+
+    crtBtn.addEventListener('click', () => {
+      crtEnabled = !crtEnabled;
+      localStorage.setItem('soulstone-crt', crtEnabled);
+      applyCRT();
+    });
+
+    // ==================================================================
+    // THEME SELECTOR
+    // ==================================================================
+    themeSelect.addEventListener('change', (e) => {
+      document.body.dataset.theme = e.target.value;
+    });
+
+    // ==================================================================
+    // BOSS STATE UPDATE (shared between canvas and DOM)
+    // ==================================================================
+    function getBossSpriteFile(killCount) {
+      const idx = (killCount || 0) % NUM_BOSS_TYPES;
+      return `sprites/boss-${idx + 1}.png`;
+    }
+
+    function updateBossState(boss) {
+      if (!boss) return;
+      bossState = boss;
+
+      const pct = Math.max(0, (boss.currentHP / boss.maxHP) * 100);
+
+      // Status panel update
+      bossStatusName.textContent = boss.name;
+      bossBarFill.style.width = pct + '%';
+      setTimeout(() => { bossBarGhost.style.width = pct + '%'; }, 50);
+      bossHpNumbers.textContent = `HP ${Math.max(0, boss.currentHP)} / ${boss.maxHP}`;
+      bossKillCount.textContent = `Slain: ${boss.killCount}`;
+      killCountEl.textContent = boss.killCount;
+
+      // DOM fallback
+      if (!useCanvas) {
+        bossNameDom.textContent = boss.name;
+        const spriteFile = getBossSpriteFile(boss.killCount);
+        bossSprite.style.backgroundImage = `url('${spriteFile}')`;
+        bossHpFillDom.style.width = pct + '%';
+        setTimeout(() => { bossHpGhostDom.style.width = pct + '%'; }, 50);
+        bossHpTextDom.textContent = `${Math.max(0, boss.currentHP)} / ${boss.maxHP}`;
+        bossMetaDom.textContent = `Kill Count: ${boss.killCount}`;
+      }
+    }
+
+    // ==================================================================
+    // PARTY MANAGEMENT
+    // ==================================================================
+    function updatePartyCount() {
+      const count = party.size;
+      partyCountEl.textContent = count;
+
+      if (useCanvas) {
+        emptyStatus.style.display = count > 0 ? 'none' : 'flex';
+      } else {
+        emptyParty.style.display = count > 0 ? 'none' : 'flex';
+      }
+    }
+
+    // Status panel row management
+    function createPartyRow(task) {
+      const row = document.createElement('div');
+      row.className = 'party-row';
+      row.dataset.taskId = task.id;
+
+      const char = task.character || {};
+
+      row.innerHTML = `
+        <span class="party-row-name" style="color: ${char.color || '#C8B458'}">${escapeHtml(char.name || 'Unknown')}</span>
+        <div class="atb-gauge"><div class="atb-fill" data-atb-fill></div></div>
+        <span class="party-row-class">${escapeHtml(char.class || 'warrior')}</span>
+        <span class="party-row-task">${escapeHtml(task.name || '')}</span>
+      `;
+
+      return row;
+    }
+
+    function rebuildStatusPanel() {
+      // Clear existing rows
+      const existing = partyRows.querySelectorAll('.party-row');
+      existing.forEach(r => r.remove());
+
+      let index = 0;
+      for (const [, entry] of party) {
+        const row = createPartyRow(entry.task);
+        partyRows.appendChild(row);
+        entry.rowEl = row;
+        if (entry.canvasChar) {
+          entry.canvasChar.index = index;
+          const pos = getPartyPosition(index);
+          entry.canvasChar.homeX = pos.x;
+          entry.canvasChar.homeY = pos.y;
+          if (entry.canvasChar.state === CHAR_IDLE) {
+            entry.canvasChar.x = pos.x;
+            entry.canvasChar.y = pos.y;
+          }
+        }
+        index++;
+      }
+
+      emptyStatus.style.display = party.size > 0 ? 'none' : 'flex';
+    }
+
+    function summonCharacter(task) {
+      if (party.has(task.id)) return;
+
+      const index = party.size;
+
+      if (useCanvas) {
+        const canvasChar = new CanvasCharacter(task, index);
+        const rowEl = createPartyRow(task);
+        partyRows.appendChild(rowEl);
+        party.set(task.id, { task, canvasChar, rowEl });
+      } else {
+        // DOM fallback
+        const slot = document.createElement('div');
+        slot.className = 'character-slot summoning';
+        slot.dataset.taskId = task.id;
+        const char = task.character || {};
+        const sprite = document.createElement('div');
+        sprite.className = 'character idle';
+        sprite.style.backgroundImage = `url('sprites/${char.sprite || 'warrior.png'}')`;
+        slot.appendChild(sprite);
+        const info = document.createElement('div');
+        info.className = 'character-info';
+        info.innerHTML = `
+          <div class="character-name" style="color: ${char.color || '#c4a35a'}">${escapeHtml(char.name || 'Unknown')}</div>
+          <div class="character-class">${escapeHtml(char.class || 'warrior')}</div>
+          <div class="character-task">${escapeHtml(task.name || '')}</div>
+        `;
+        slot.appendChild(info);
+        partyArea.appendChild(slot);
+        party.set(task.id, { task, element: slot, spriteEl: sprite });
+        slot.addEventListener('animationend', () => slot.classList.remove('summoning'), { once: true });
+      }
+
+      updatePartyCount();
+      playSummonSound();
+    }
+
+    function unsummonCharacter(taskId) {
+      const entry = party.get(taskId);
+      if (!entry) return;
+
+      if (useCanvas && entry.canvasChar) {
+        entry.canvasChar.unsummoning = true;
+        // Remove row from status panel
+        if (entry.rowEl) entry.rowEl.remove();
+      } else if (entry.element) {
+        // DOM fallback
+        entry.element.classList.add('unsummoning');
+        entry.element.addEventListener('animationend', () => {
+          entry.element.remove();
+          party.delete(taskId);
+          updatePartyCount();
+        }, { once: true });
+        return; // Don't delete from map yet — wait for animation
+      }
+
+      playUnsummonSound();
+    }
+
+    // ==================================================================
+    // ATB GAUGE UPDATES
+    // ==================================================================
+    function updateATBGauges(gauges) {
+      if (!gauges) return;
+      for (const [taskId, value] of Object.entries(gauges)) {
+        const entry = party.get(taskId);
+        if (!entry) continue;
+
+        // Find the ATB fill element in the party row
+        const rowEl = entry.rowEl;
+        if (!rowEl) continue;
+        const fill = rowEl.querySelector('[data-atb-fill]');
+        if (!fill) continue;
+
+        const pct = Math.min(100, Math.max(0, value));
+        fill.style.width = pct + '%';
+
+        if (pct >= 100) {
+          fill.classList.add('full');
+        } else {
+          fill.classList.remove('full');
+        }
+      }
+    }
+
+    // ==================================================================
+    // DAMAGE PROCESSING
+    // ==================================================================
+    let damageQueue = [];
+    let processingDamage = false;
+
+    function processDamageQueue() {
+      if (processingDamage || damageQueue.length === 0) return;
+      processingDamage = true;
+
+      const item = damageQueue.shift();
+
+      // Update boss HP
+      if (bossState) {
+        bossState.currentHP = item.bossHP;
+        bossState.maxHP = item.bossMaxHP;
+        updateBossState(bossState);
+      }
+
+      if (useCanvas) {
+        // Queue attack on the canvas character
+        const entry = party.get(item.taskId);
+        if (entry && entry.canvasChar) {
+          entry.canvasChar.queueAttack(item);
+        } else {
+          // Character not found on canvas, just show damage
+          spawnDamageNumber(item.amount, bossCanvasX + 60, bossCanvasY + 40, item.isCrit);
+          if (item.isCrit) playCritSound();
+          else playSlashSound();
+        }
+      } else {
+        // DOM fallback
+        triggerAttackDOM(item.taskId);
+        showDamageNumberDOM(item.amount, item.isCrit);
+        if (item.isCrit) playCritSound();
+        else playSlashSound();
+      }
+
+      const delay = damageQueue.length > 0 ? 60 : 0;
+      setTimeout(() => {
+        processingDamage = false;
+        if (damageQueue.length > 0) processDamageQueue();
+      }, delay);
+    }
+
+    // DOM fallback damage rendering
+    function triggerAttackDOM(taskId) {
+      const entry = party.get(taskId);
+      if (!entry || !entry.spriteEl) return;
+      entry.spriteEl.classList.remove('idle');
+      entry.spriteEl.classList.add('attacking');
+      entry.spriteEl.addEventListener('animationend', () => {
+        entry.spriteEl.classList.remove('attacking');
+        entry.spriteEl.classList.add('idle');
+      }, { once: true });
+    }
+
+    function showDamageNumberDOM(amount, isCrit) {
+      const el = document.createElement('div');
+      el.className = 'damage-number' + (isCrit ? ' crit' : '');
+      el.textContent = isCrit ? amount + '!' : amount;
+      const rect = (useCanvas ? canvasContainer : bossSprite).getBoundingClientRect();
+      el.style.left = (rect.left + rect.width / 2 + (Math.random() - 0.5) * 80) + 'px';
+      el.style.top = (rect.top + rect.height * 0.3 + (Math.random() - 0.5) * 40) + 'px';
+      document.body.appendChild(el);
+      el.addEventListener('animationend', () => el.remove());
+    }
+
+    // ==================================================================
+    // BOSS DEATH / VICTORY
+    // ==================================================================
+    function showVictory() {
+      if (useCanvas) {
+        bossDying = true;
+        bossDeathTimer = 0;
+        bossOpacity = 1;
+        triggerVictoryCanvas();
+        playBossDeathSound();
+        // Play fanfare after death sound
+        setTimeout(() => playVictoryFanfare(), 800);
+      } else {
+        // DOM fallback
+        const overlay = document.createElement('div');
+        overlay.className = 'victory-overlay';
+        overlay.innerHTML = '<div class="victory-text">VICTORY</div>';
+        battleScene.appendChild(overlay);
+        bossSprite.classList.add('dying');
+        playBossDeathSound();
+        setTimeout(() => playVictoryFanfare(), 800);
+        overlay.querySelector('.victory-text').addEventListener('animationend', () => overlay.remove());
+      }
+    }
+
+    function spawnNewBoss(boss) {
+      if (useCanvas) {
+        bossOpacity = 1;
+        bossBrightness = 1;
+        bossDying = false;
+        bossDeathTimer = 0;
+        bossShakeX = 0;
+        bossShakeY = 0;
+        bossIdleTime = 0;
+      } else {
+        bossSprite.classList.remove('dying');
+        bossSprite.style.opacity = '1';
+        bossSprite.style.transform = '';
+      }
+      // Rotate battle background for the new encounter
+      rotateBackground();
+      updateBossState(boss);
+      playBossSpawnSound();
+    }
+
+    // ==================================================================
+    // FULL SCENE SYNC
+    // ==================================================================
+    function syncScene(data) {
+      // Clear existing party
+      for (const [id, entry] of party) {
+        if (entry.canvasChar) { /* will be garbage collected */ }
+        if (entry.element) entry.element.remove();
+        if (entry.rowEl) entry.rowEl.remove();
+      }
+      party.clear();
+
+      // Rebuild party from active tasks
+      const tasks = data.tasks || [];
+      for (const task of tasks) {
+        if (task.status === 'active') {
+          summonCharacter(task);
+        }
+      }
+
+      // Update boss
+      if (data.boss) {
+        updateBossState(data.boss);
+      }
+
+      // Restore ATB gauges
+      if (data.gauges) {
+        updateATBGauges(data.gauges);
+      }
+
+      updatePartyCount();
+    }
+
+    // ==================================================================
+    // SSE CONNECTION
+    // ==================================================================
+    let eventSource = null;
+
+    function connectSSE() {
+      eventSource = new EventSource('/events');
+
+      eventSource.addEventListener('message', (event) => {
+        const data = JSON.parse(event.data);
+        handleEvent(data);
+      });
+
+      eventSource.addEventListener('error', () => {
+        if (eventSource.readyState === EventSource.CLOSED) {
+          setTimeout(connectSSE, 2000);
+        }
+      });
+    }
+
+    function handleEvent(data) {
+      switch (data.type) {
+        case 'sync':
+          syncScene(data);
+          break;
+
+        case 'task_start':
+          summonCharacter(data.task);
+          break;
+
+        case 'task_complete':
+          unsummonCharacter(data.task.id);
+          break;
+
+        case 'boss_damage':
+          damageQueue.push(data);
+          processDamageQueue();
+          break;
+
+        case 'boss_death':
+          showVictory();
+          killCountEl.textContent = data.killCount;
+          break;
+
+        case 'boss_spawn':
+          spawnNewBoss(data.boss);
+          break;
+
+        case 'atb_update':
+          updateATBGauges(data.gauges);
+          break;
+      }
+    }
+
+    // ==================================================================
+    // FALLBACK: initial load via /tasks
+    // ==================================================================
+    async function initialLoad() {
+      try {
+        const res = await fetch('/tasks');
+        const data = await res.json();
+        if (data.tasks) {
+          syncScene(data);
+        }
+      } catch (e) {
+        console.error('Initial load failed:', e);
+      }
+    }
+
+    // ==================================================================
+    // RESIZE HANDLING
+    // ==================================================================
+    window.addEventListener('resize', () => {
+      if (useCanvas) {
+        resizeDisplayCanvas();
+      }
+    });
+
+    // ==================================================================
+    // UTILS
+    // ==================================================================
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // ==================================================================
+    // INIT
+    // ==================================================================
+    (async function init() {
+      // Wait for sprites to load
+      await Promise.all(spriteLoadPromises);
+
+      // Try to init canvas
+      if (initCanvas()) {
+        canvasContainer.style.display = '';
+        domFallback.classList.remove('active');
+        initBackground();
+        applyCRT();
+        gameRunning = true;
+        requestAnimationFrame(gameLoop);
+      } else {
+        // Canvas fallback
+        useCanvas = false;
+        canvasContainer.style.display = 'none';
+        statusPanel.style.borderRadius = '12px';
+        domFallback.classList.add('active');
+      }
+
+      initialLoad();
+      connectSSE();
+    })();
+  </script>
+</body>
+</html>
