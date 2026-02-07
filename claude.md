@@ -38,8 +38,6 @@ soul-stone/
 │       └── subagent-complete.sh # SubagentStop → POST /task/complete
 ├── soul-stone-data.json         # Persistent stats (gitignored)
 ├── package.json
-├── PLAN.md                      # Evolution plan (completed)
-├── Prompt.md                    # Original build requirements
 └── CLAUDE.md                    # This file
 ```
 
@@ -105,7 +103,7 @@ Single-file frontend with everything in one HTML file. No build process.
 
 **Boss Sprite System (Procedural):**
 - `BOSS_ARCHETYPES`: 8 distinct types (Dragon, Demon, Golem, Undead Knight, Kraken, Lich, Giant Spider, Elemental)
-- Each has unique palette, 32×32 mirrored pixel mask, and 4 idle frames with vertical bob
+- Each has unique palette, full 32×32 asymmetric pixel mask, and 4 idle frames with vertical bob
 - `generateBossSprite(bossIndex)`: Creates 128×32 canvas sprite sheets
 - `getBossSpriteKey(killCount)`: Cycles through 8 types based on kill count
 - Programmatic idle animation layered in `renderBoss()`:
@@ -130,9 +128,9 @@ IDLE → STEPPING_FORWARD (150ms lerp to boss) → ATTACKING (400ms, triggers ef
 - Per-character ATB gauge bars
 - Boss HP bar with ghost damage indicator
 
-**JRPG Counter Panels** (replaced Diablo orbs):
-- Party count (sword icon) and Kill count (skull icon)
-- FF6 blue gradient with silver borders, PressStart2P font
+**Header Counter Chips:**
+- Party count (sword icon) and Kill count (skull icon) inlined into the header row
+- FF6 blue gradient pills with silver borders, PressStart2P font
 
 ## UI Design — JRPG Aesthetic
 
@@ -168,7 +166,7 @@ IDLE → STEPPING_FORWARD (150ms lerp to boss) → ATTACKING (400ms, triggers ef
 
 ### Widget Mode
 Optimized for small windows / ambient widget use (5-inch secondary display):
-- Compact default sizing (2em title, 70px counters, 300px max canvas)
+- Compact default sizing (2em title, inline counter chips, 500px max canvas / 280px in widget mode)
 - `@media (max-height: 600px)` breakpoint for extreme compression
 - No scrolling needed on small displays
 

@@ -44,7 +44,7 @@ Bosses are generated in-browser via `generateBossSprite(bossIndex)`. No PNG file
 ### System
 - **Frame size:** 32x32 pixels
 - **Sheet size:** 128x32 (4 cols x 1 row)
-- **Mirrored pixel masks** with zone-based coloring
+- **Full 32×32 asymmetric pixel masks** with zone-based coloring
 - **4 idle frames** with built-in vertical bob shifts [0, -1, 0, 1]
 - **Rendered at 4x scale** (128x128 display)
 - **Programmatic idle animation** layered in `renderBoss()`: sinusoidal bob, scaleY breathing, dynamic shadow, glow pulse
