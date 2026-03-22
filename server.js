@@ -161,6 +161,19 @@ let bossNameIndex = stats.bossNameIndex;
 
 let boss = null;
 
+// ---------------------------------------------------------------------------
+// Loot drop system (temporary buffs, not persisted)
+// ---------------------------------------------------------------------------
+
+const LOOT_TABLE = [
+  { type: 'strength', name: 'Strength Orb', description: '+20% DPS', color: '#FF4444' },
+  { type: 'speed', name: 'Speed Charm', description: '-15% cooldown', color: '#4488FF' },
+  { type: 'shield', name: 'Guardian Shield', description: 'Delayed enrage', color: '#44DD44' },
+  { type: 'luck', name: 'Lucky Coin', description: '+5% crit', color: '#FFD700' },
+];
+
+let activeBuff = null; // { type: 'strength'|'speed'|'shield'|'luck', name: string }
+
 function spawnBoss() {
   const name = BOSS_NAMES[bossNameIndex % BOSS_NAMES.length];
   bossNameIndex++;
@@ -173,7 +186,9 @@ function spawnBoss() {
     killCount,
     spawnTime: Date.now(),
     sprite: 'boss.png',
+    buff: activeBuff, // Apply pending buff from last kill
   };
+  activeBuff = null; // Consumed — one fight only
   return boss;
 }
 
@@ -181,7 +196,7 @@ function spawnBoss() {
 spawnBoss();
 
 function getBossState() {
-  return { ...boss };
+  return { ...boss, buff: boss.buff || null };
 }
 
 // ---------------------------------------------------------------------------
@@ -349,7 +364,8 @@ setInterval(() => {
     const state = atbState.get(task.id);
 
     // Fill ATB based on attackSpeed: atb += (TICK_INTERVAL / attackSpeed) * 100
-    state.atb += (ATB_TICK_INTERVAL / char.attackSpeed) * ATB_MAX;
+    const speedMultiplier = (boss.buff && boss.buff.type === 'speed') ? 1.15 : 1;
+    state.atb += (ATB_TICK_INTERVAL / char.attackSpeed) * ATB_MAX * speedMultiplier;
 
     // Check if ATB is full — character attacks
     if (state.atb >= ATB_MAX) {
@@ -362,11 +378,13 @@ setInterval(() => {
       const level = getLevelFromXP(currentXP);
       const levelMultiplier = 1 + 0.05 * (level - 1);
 
-      const baseDamage = char.baseDPS * (char.attackSpeed / 1000) * levelMultiplier;
+      let baseDamage = char.baseDPS * (char.attackSpeed / 1000) * levelMultiplier;
+      if (boss.buff && boss.buff.type === 'strength') baseDamage *= 1.2;
       const varianceFactor = 1 + (Math.random() * 2 - 1) * VARIANCE;
       let damage = Math.round(baseDamage * varianceFactor);
 
-      const isCrit = Math.random() < CRIT_CHANCE;
+      const critChance = CRIT_CHANCE + ((boss.buff && boss.buff.type === 'luck') ? 0.05 : 0);
+      const isCrit = Math.random() < critChance;
       if (isCrit) {
         damage *= CRIT_MULTIPLIER;
       }
@@ -410,6 +428,11 @@ setInterval(() => {
       if (boss.currentHP <= 0) {
         boss.killCount++;
         broadcast({ type: 'boss_death', killCount: boss.killCount });
+
+        // Roll loot drop for next fight
+        const loot = LOOT_TABLE[Math.floor(Math.random() * LOOT_TABLE.length)];
+        activeBuff = { type: loot.type, name: loot.name };
+        broadcast({ type: 'loot_drop', loot });
 
         // Record boss kill in persistent stats
         stats.bossKillCount++;

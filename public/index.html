@@ -2272,6 +2272,9 @@
     // Boss idle animation time tracker (independent of frame count)
     let bossIdleTime = 0;
 
+    // Loot drop animation state
+    let lootDrop = null; // { type, name, description, color, timer, opacity }
+
     function renderBoss(ctx) {
       const key = getBossSpriteKey(bossState ? bossState.killCount : 0);
       const img = spriteImages[key];
@@ -2283,8 +2286,9 @@
 
       // --- Boss phase based on HP ratio ---
       const hpRatio = bossState ? (bossState.currentHP / bossState.maxHP) : 1;
-      const enraged = hpRatio <= 0.5;    // Phase 2: enraged
-      const critical = hpRatio <= 0.25;   // Phase 3: critical/desperate
+      const hasShield = bossState && bossState.buff && bossState.buff.type === 'shield';
+      const enraged = hpRatio <= (hasShield ? 0.35 : 0.5);    // Phase 2: enraged
+      const critical = hpRatio <= (hasShield ? 0.15 : 0.25);   // Phase 3: critical/desperate
 
       // --- Programmatic idle animation ---
       // 1. Sinusoidal vertical bob — faster when enraged
@@ -2375,6 +2379,93 @@
         drawSprite(ctx, img, SPRITE_CONFIG.bosses, 0, bossFrame, bx, by, bossScale, false);
         ctx.globalCompositeOperation = 'source-over';
       }
+
+      ctx.restore();
+    }
+
+    // ==================================================================
+    // LOOT DROP RENDERING
+    // ==================================================================
+    function updateLootDrop(dt) {
+      if (!lootDrop) return;
+      lootDrop.timer -= dt;
+      if (lootDrop.timer <= 0) {
+        lootDrop = null;
+        return;
+      }
+      // Fade out in last 800ms
+      if (lootDrop.timer < 800) {
+        lootDrop.opacity = lootDrop.timer / 800;
+      }
+    }
+
+    function renderLootDrop(ctx) {
+      if (!lootDrop || lootDrop.opacity <= 0) return;
+
+      const bossScale = 4;
+      const spriteW = SPRITE_CONFIG.bosses.frameW * bossScale;
+      const centerX = bossCanvasX + spriteW / 2;
+      const baseY = bossCanvasY + 40;
+
+      // Bouncing sine wave
+      const bounce = Math.sin(lootDrop.timer * 0.008) * 6;
+      const x = centerX;
+      const y = baseY + bounce;
+
+      ctx.save();
+      ctx.globalAlpha = lootDrop.opacity;
+
+      // Outer glow
+      const glowPulse = 0.3 + 0.2 * Math.sin(lootDrop.timer * 0.01);
+      ctx.globalAlpha = lootDrop.opacity * glowPulse;
+      ctx.fillStyle = lootDrop.color;
+      ctx.beginPath();
+      ctx.arc(x, y, 14, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Icon background (8x8 scaled 3x = 24x24 centered)
+      ctx.globalAlpha = lootDrop.opacity;
+      ctx.fillStyle = lootDrop.color;
+      const size = 10;
+      ctx.fillRect(x - size / 2, y - size / 2, size, size);
+
+      // Inner border
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(x - size / 2 + 1, y - size / 2 + 1, size - 2, size - 2);
+
+      // Inner icon color fill
+      ctx.fillStyle = lootDrop.color;
+      ctx.fillRect(x - size / 2 + 2, y - size / 2 + 2, size - 4, size - 4);
+
+      // Symbol detail (2-3 pixel marks)
+      ctx.fillStyle = '#FFFFFF';
+      if (lootDrop.type === 'strength') {
+        // Circle/orb
+        ctx.fillRect(x - 1, y - 2, 2, 1);
+        ctx.fillRect(x - 2, y - 1, 4, 2);
+        ctx.fillRect(x - 1, y + 1, 2, 1);
+      } else if (lootDrop.type === 'speed') {
+        // Lightning bolt
+        ctx.fillRect(x, y - 2, 1, 2);
+        ctx.fillRect(x - 1, y, 2, 1);
+        ctx.fillRect(x - 1, y + 1, 1, 2);
+      } else if (lootDrop.type === 'shield') {
+        // Cross/shield
+        ctx.fillRect(x - 1, y - 2, 2, 4);
+        ctx.fillRect(x - 2, y - 1, 4, 2);
+      } else if (lootDrop.type === 'luck') {
+        // Coin circle
+        ctx.fillRect(x - 1, y - 1, 2, 2);
+      }
+
+      // Item name text
+      ctx.font = '5px PressStart2P, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = lootDrop.color;
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = 2;
+      ctx.strokeText(lootDrop.name, x, y + 14);
+      ctx.fillText(lootDrop.name, x, y + 14);
 
       ctx.restore();
     }
@@ -2911,6 +3002,7 @@
       updateEffects(dt);
       updateDamageNumbers(dt);
       updateVictory(dt);
+      updateLootDrop(dt);
 
       // Clean up finished unsummon animations
       for (const [id, entry] of party) {
@@ -2951,6 +3043,9 @@
 
       // Victory text
       renderVictory(gameCtx);
+
+      // Loot drop
+      renderLootDrop(gameCtx);
 
       // Scale to display
       displayCtx.clearRect(0, 0, displayCanvas.width, displayCanvas.height);
@@ -3530,7 +3625,8 @@
       const pct = Math.max(0, (boss.currentHP / boss.maxHP) * 100);
 
       // Status panel update
-      bossStatusName.textContent = boss.name;
+      const buffLabel = boss.buff ? ` [${boss.buff.name}]` : '';
+      bossStatusName.textContent = boss.name + buffLabel;
       bossBarFill.style.width = pct + '%';
       setTimeout(() => { bossBarGhost.style.width = pct + '%'; }, 50);
       bossHpNumbers.textContent = `HP ${Math.max(0, boss.currentHP)} / ${boss.maxHP}`;
@@ -3904,6 +4000,18 @@
           showVictory();
           killCountEl.textContent = data.killCount;
           addLogEntry(`Victory! ${bossState ? bossState.name : 'Boss'} defeated!`, 'victory');
+          break;
+
+        case 'loot_drop':
+          lootDrop = {
+            type: data.loot.type,
+            name: data.loot.name,
+            description: data.loot.description,
+            color: data.loot.color,
+            timer: 3000,
+            opacity: 1,
+          };
+          addLogEntry(`${data.loot.name} dropped!`, 'victory');
           break;
 
         case 'boss_spawn':
