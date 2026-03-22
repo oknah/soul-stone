@@ -2471,6 +2471,136 @@
     }
 
     // ==================================================================
+    // COMBO SYSTEM
+    // ==================================================================
+    let comboCount = 0;
+    let comboTimer = 0; // ms since last hit
+    const COMBO_WINDOW = 500; // ms — hits within this window count as combo
+    let comboDisplayTimer = 0;
+    let comboDisplayText = '';
+    let comboDisplayScale = 1;
+
+    // Combo sparkles (for CHAIN 4+ hits)
+    const MAX_COMBO_SPARKLES = 24;
+    const comboSparkles = [];
+    let comboSparklesActive = false;
+
+    function spawnComboSparkles() {
+      comboSparklesActive = true;
+      for (let i = 0; i < MAX_COMBO_SPARKLES; i++) {
+        let s = comboSparkles[i];
+        if (!s) { s = {}; comboSparkles[i] = s; }
+        s.active = true;
+        s.x = Math.random() * GAME_W;
+        s.y = Math.random() * GAME_H;
+        s.size = 1 + Math.random() * 2;
+        s.opacity = 0.8 + Math.random() * 0.2;
+        s.age = 0;
+        s.maxAge = 300 + Math.random() * 200;
+        s.vy = -0.3 - Math.random() * 0.5;
+        s.phase = Math.random() * Math.PI * 2;
+      }
+    }
+
+    function updateComboSparkles(dt) {
+      if (!comboSparklesActive) return;
+      let anyActive = false;
+      for (const s of comboSparkles) {
+        if (!s || !s.active) continue;
+        s.age += dt;
+        s.y += s.vy * dt * 0.06;
+        s.opacity = Math.max(0, 1 - s.age / s.maxAge);
+        if (s.age >= s.maxAge) s.active = false;
+        else anyActive = true;
+      }
+      if (!anyActive) comboSparklesActive = false;
+    }
+
+    function renderComboSparkles(ctx) {
+      if (!comboSparklesActive) return;
+      ctx.save();
+      for (const s of comboSparkles) {
+        if (!s || !s.active) continue;
+        // Twinkle effect
+        const twinkle = 0.5 + 0.5 * Math.sin(s.age * 0.02 + s.phase);
+        ctx.globalAlpha = s.opacity * twinkle;
+        ctx.fillStyle = '#FFFFFF';
+        // Draw a small cross/star shape
+        const sz = Math.ceil(s.size);
+        const x = Math.floor(s.x);
+        const y = Math.floor(s.y);
+        ctx.fillRect(x, y, sz, sz);
+        ctx.fillRect(x - 1, y + Math.floor(sz / 2), sz + 2, 1);
+        ctx.fillRect(x + Math.floor(sz / 2), y - 1, 1, sz + 2);
+      }
+      ctx.restore();
+    }
+
+    function renderCombo(ctx) {
+      if (comboDisplayTimer <= 0 || !comboDisplayText) return;
+
+      ctx.save();
+
+      // Fade out over the last 500ms
+      let alpha = 1;
+      if (comboDisplayTimer < 500) {
+        alpha = comboDisplayTimer / 500;
+      }
+      ctx.globalAlpha = alpha;
+
+      // Font size based on combo level
+      let fontSize = 10;
+      let fillColor = '#FFFFFF';
+      let glowColor = 'rgba(255, 255, 255, 0.6)';
+
+      if (comboDisplayText.startsWith('CHAIN')) {
+        fontSize = 14;
+        // Cycling rainbow
+        const hue = (Date.now() * 0.18) % 360;
+        fillColor = `hsl(${hue}, 100%, 70%)`;
+        glowColor = `hsla(${hue}, 100%, 60%, 0.8)`;
+      } else if (comboDisplayText === 'TRIPLE!') {
+        fontSize = 12;
+        fillColor = '#FFD700';
+        glowColor = 'rgba(255, 215, 0, 0.7)';
+      } else {
+        fontSize = 10;
+        fillColor = '#FFFFFF';
+        glowColor = 'rgba(255, 255, 255, 0.6)';
+      }
+
+      ctx.font = fontSize + 'px PressStart2P, monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      // Position: centered, slightly above boss
+      const cx = GAME_W / 2;
+      const cy = bossCanvasY - 8;
+
+      // Apply scale animation
+      ctx.translate(cx, cy);
+      ctx.scale(comboDisplayScale, comboDisplayScale);
+
+      // Glow
+      ctx.shadowColor = glowColor;
+      ctx.shadowBlur = 8;
+
+      // Black outline (same pattern as VICTORY text)
+      ctx.fillStyle = '#000';
+      for (let ox = -1; ox <= 1; ox++) {
+        for (let oy = -1; oy <= 1; oy++) {
+          if (ox || oy) ctx.fillText(comboDisplayText, ox, oy);
+        }
+      }
+
+      // Main text
+      ctx.fillStyle = fillColor;
+      ctx.fillText(comboDisplayText, 0, 0);
+
+      ctx.restore();
+    }
+
+    // ==================================================================
     // CANVAS DAMAGE NUMBERS (pooled)
     // ==================================================================
     const MAX_DAMAGE_NUMBERS = 20;
@@ -2548,6 +2678,25 @@
     const attackEffects = [];
 
     function triggerCanvasAttackEffects(attackData, targetX, targetY) {
+      // Combo tracking
+      comboTimer = 0;
+      comboCount++;
+      if (comboCount >= 2) {
+        if (comboCount === 2) {
+          comboDisplayText = 'DOUBLE!';
+        } else if (comboCount === 3) {
+          comboDisplayText = 'TRIPLE!';
+        } else {
+          comboDisplayText = 'CHAIN x' + comboCount + '!';
+        }
+        comboDisplayTimer = 1500;
+        comboDisplayScale = 1.5;
+        // Sparkles for CHAIN (4+ hits)
+        if (comboCount >= 4) {
+          spawnComboSparkles();
+        }
+      }
+
       // Screen flash
       screenFlashOpacity = 0.7;
 
@@ -2581,6 +2730,22 @@
     }
 
     function updateEffects(dt) {
+      // Combo timer decay
+      comboTimer += dt;
+      if (comboTimer > COMBO_WINDOW) {
+        comboCount = 0;
+      }
+      if (comboDisplayTimer > 0) {
+        comboDisplayTimer -= dt;
+        // Animate scale: pop in at 1.5, settle to 1.0 over 200ms
+        if (comboDisplayScale > 1.0) {
+          comboDisplayScale -= dt / 200 * 0.5;
+          if (comboDisplayScale < 1.0) comboDisplayScale = 1.0;
+        }
+      }
+      // Update combo sparkles
+      updateComboSparkles(dt);
+
       // Screen flash decay
       if (screenFlashOpacity > 0) {
         screenFlashOpacity -= dt / 150;
@@ -3037,6 +3202,10 @@
 
       // Damage numbers
       renderDamageNumbers(gameCtx);
+
+      // Combo text and sparkles
+      renderComboSparkles(gameCtx);
+      renderCombo(gameCtx);
 
       // Screen flash
       renderFlash(gameCtx);
