@@ -3601,10 +3601,119 @@
     ];
     const BGM_TEMPO = 180; // ms per beat (≈160 BPM)
 
+    // Dynamic BGM intensity state
+    let bgmIntensity = 'normal'; // 'sparse', 'normal', 'full'
+    let bgmTempo = BGM_TEMPO;
+
+    function getBGMIntensity() {
+      const size = party.size;
+      if (size <= 2) return 'sparse';
+      if (size >= 5) return 'full';
+      return 'normal';
+    }
+
+    function getBGMTempo() {
+      if (!bossState) return BGM_TEMPO;
+      const ratio = bossState.currentHP / bossState.maxHP;
+      if (ratio <= 0.25) return 140;
+      if (ratio <= 0.5) return 160;
+      return BGM_TEMPO;
+    }
+
+    function updateBGMIntensity() {
+      if (!bgmPlaying) return;
+      const newIntensity = getBGMIntensity();
+      const newTempo = getBGMTempo();
+      bgmIntensity = newIntensity;
+      // If tempo changed, restart the interval
+      if (newTempo !== bgmTempo) {
+        bgmTempo = newTempo;
+        if (bgmInterval) {
+          clearInterval(bgmInterval);
+          bgmInterval = setInterval(bgmTickFn, bgmTempo);
+        }
+      }
+    }
+
+    // BGM tick function — extracted so we can restart the interval on tempo changes
+    function bgmTickFn() {
+      if (!audioCtx || muted || !bgmPlaying) return;
+      const now = audioCtx.currentTime;
+      const tempo = bgmTempo;
+
+      // Bass — square wave arpeggiation (always plays)
+      const bassNote = BGM_BASS[bgmBeat % BGM_BASS.length];
+      const bass = audioCtx.createOscillator();
+      bass.type = 'square';
+      bass.frequency.setValueAtTime(bassNote, now);
+      const bg = audioCtx.createGain();
+      bg.gain.setValueAtTime(0.5, now);
+      bg.gain.exponentialRampToValueAtTime(0.01, now + tempo / 1000 * 0.9);
+      bass.connect(bg);
+      bg.connect(bgmGain);
+      bass.start(now);
+      bass.stop(now + tempo / 1000);
+
+      // Melody — triangle wave, plays every other beat (skip in sparse mode)
+      if (bgmBeat % 2 === 0 && bgmIntensity !== 'sparse') {
+        const melNote = BGM_MELODY[(bgmBeat / 2) % BGM_MELODY.length];
+        const mel = audioCtx.createOscillator();
+        mel.type = 'triangle';
+        mel.frequency.setValueAtTime(melNote, now);
+        const mg = audioCtx.createGain();
+        mg.gain.setValueAtTime(0.4, now);
+        mg.gain.exponentialRampToValueAtTime(0.01, now + tempo / 1000 * 1.8);
+        mel.connect(mg);
+        mg.connect(bgmGain);
+        mel.start(now);
+        mel.stop(now + tempo / 1000 * 2);
+
+        // Harmony — major third above melody (full intensity only)
+        if (bgmIntensity === 'full') {
+          const harmNote = melNote * 1.25;
+          const harm = audioCtx.createOscillator();
+          harm.type = 'triangle';
+          harm.frequency.setValueAtTime(harmNote, now);
+          const hmg = audioCtx.createGain();
+          hmg.gain.setValueAtTime(0.2, now);
+          hmg.gain.exponentialRampToValueAtTime(0.01, now + tempo / 1000 * 1.8);
+          harm.connect(hmg);
+          hmg.connect(bgmGain);
+          harm.start(now);
+          harm.stop(now + tempo / 1000 * 2);
+        }
+      }
+
+      // Hi-hat — noise on every beat, accent on 1 and 3
+      const accent = (bgmBeat % 4 === 0 || bgmBeat % 4 === 2);
+      const hatLen = accent ? 0.06 : 0.03;
+      const hatVol = accent ? 0.25 : 0.12;
+      const hatBuf = audioCtx.createBuffer(1, Math.floor(audioCtx.sampleRate * hatLen), audioCtx.sampleRate);
+      const hatData = hatBuf.getChannelData(0);
+      for (let i = 0; i < hatData.length; i++) {
+        hatData[i] = (Math.random() * 2 - 1) * (1 - i / hatData.length);
+      }
+      const hat = audioCtx.createBufferSource();
+      hat.buffer = hatBuf;
+      const hpf = audioCtx.createBiquadFilter();
+      hpf.type = 'highpass';
+      hpf.frequency.value = accent ? 8000 : 10000;
+      const hg = audioCtx.createGain();
+      hg.gain.setValueAtTime(hatVol, now);
+      hat.connect(hpf);
+      hpf.connect(hg);
+      hg.connect(bgmGain);
+      hat.start(now);
+
+      bgmBeat++;
+    }
+
     function startBGM() {
       if (!audioCtx || bgmPlaying) return;
       bgmPlaying = true;
       bgmBeat = 0;
+      bgmIntensity = getBGMIntensity();
+      bgmTempo = getBGMTempo();
 
       // BGM gain node — low volume so it sits behind SFX
       bgmGain = audioCtx.createGain();
@@ -3613,61 +3722,7 @@
       // Fade in
       bgmGain.gain.linearRampToValueAtTime(0.06, audioCtx.currentTime + 1.5);
 
-      bgmInterval = setInterval(() => {
-        if (!audioCtx || muted || !bgmPlaying) return;
-        const now = audioCtx.currentTime;
-
-        // Bass — square wave arpeggiation
-        const bassNote = BGM_BASS[bgmBeat % BGM_BASS.length];
-        const bass = audioCtx.createOscillator();
-        bass.type = 'square';
-        bass.frequency.setValueAtTime(bassNote, now);
-        const bg = audioCtx.createGain();
-        bg.gain.setValueAtTime(0.5, now);
-        bg.gain.exponentialRampToValueAtTime(0.01, now + BGM_TEMPO / 1000 * 0.9);
-        bass.connect(bg);
-        bg.connect(bgmGain);
-        bass.start(now);
-        bass.stop(now + BGM_TEMPO / 1000);
-
-        // Melody — triangle wave, plays every other beat
-        if (bgmBeat % 2 === 0) {
-          const melNote = BGM_MELODY[(bgmBeat / 2) % BGM_MELODY.length];
-          const mel = audioCtx.createOscillator();
-          mel.type = 'triangle';
-          mel.frequency.setValueAtTime(melNote, now);
-          const mg = audioCtx.createGain();
-          mg.gain.setValueAtTime(0.4, now);
-          mg.gain.exponentialRampToValueAtTime(0.01, now + BGM_TEMPO / 1000 * 1.8);
-          mel.connect(mg);
-          mg.connect(bgmGain);
-          mel.start(now);
-          mel.stop(now + BGM_TEMPO / 1000 * 2);
-        }
-
-        // Hi-hat — noise on every beat, accent on 1 and 3
-        const accent = (bgmBeat % 4 === 0 || bgmBeat % 4 === 2);
-        const hatLen = accent ? 0.06 : 0.03;
-        const hatVol = accent ? 0.25 : 0.12;
-        const hatBuf = audioCtx.createBuffer(1, Math.floor(audioCtx.sampleRate * hatLen), audioCtx.sampleRate);
-        const hatData = hatBuf.getChannelData(0);
-        for (let i = 0; i < hatData.length; i++) {
-          hatData[i] = (Math.random() * 2 - 1) * (1 - i / hatData.length);
-        }
-        const hat = audioCtx.createBufferSource();
-        hat.buffer = hatBuf;
-        const hpf = audioCtx.createBiquadFilter();
-        hpf.type = 'highpass';
-        hpf.frequency.value = accent ? 8000 : 10000;
-        const hg = audioCtx.createGain();
-        hg.gain.setValueAtTime(hatVol, now);
-        hat.connect(hpf);
-        hpf.connect(hg);
-        hg.connect(bgmGain);
-        hat.start(now);
-
-        bgmBeat++;
-      }, BGM_TEMPO);
+      bgmInterval = setInterval(bgmTickFn, bgmTempo);
     }
 
     function stopBGM(fadeTime) {
@@ -3812,6 +3867,9 @@
         bossHpTextDom.textContent = `${Math.max(0, boss.currentHP)} / ${boss.maxHP}`;
         bossMetaDom.textContent = `Kill Count: ${boss.killCount}`;
       }
+
+      // Update BGM tempo based on boss HP phase
+      updateBGMIntensity();
     }
 
     // ==================================================================
@@ -3833,6 +3891,9 @@
       } else if (count === 0 && bgmPlaying) {
         stopBGM(2.0);
       }
+
+      // Update BGM intensity for party-size-aware layers
+      updateBGMIntensity();
     }
 
     // Status panel row management
