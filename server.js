@@ -174,6 +174,13 @@ const LOOT_TABLE = [
 
 let activeBuff = null; // { type: 'strength'|'speed'|'shield'|'luck', name: string }
 
+// Boss attack timer (must be before spawnBoss)
+let bossAttackTimer = 0;
+const BOSS_ATTACK_INTERVAL_MIN = 8000;
+const BOSS_ATTACK_INTERVAL_MAX = 12000;
+let nextBossAttack = BOSS_ATTACK_INTERVAL_MIN + Math.random() * (BOSS_ATTACK_INTERVAL_MAX - BOSS_ATTACK_INTERVAL_MIN);
+const BOSS_ATTACK_TYPES = ['aoe_slam', 'roar', 'targeted_strike'];
+
 function spawnBoss() {
   const name = BOSS_NAMES[bossNameIndex % BOSS_NAMES.length];
   bossNameIndex++;
@@ -339,13 +346,6 @@ const VARIANCE = 0.20; // +/- 20%
 
 // Per-task ATB state: taskId -> { atb: 0-100 }
 const atbState = new Map();
-
-// Boss attack timer
-let bossAttackTimer = 0;
-const BOSS_ATTACK_INTERVAL_MIN = 8000;
-const BOSS_ATTACK_INTERVAL_MAX = 12000;
-let nextBossAttack = BOSS_ATTACK_INTERVAL_MIN + Math.random() * (BOSS_ATTACK_INTERVAL_MAX - BOSS_ATTACK_INTERVAL_MIN);
-const BOSS_ATTACK_TYPES = ['aoe_slam', 'roar', 'targeted_strike'];
 
 setInterval(() => {
   // Gather active tasks
