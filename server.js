@@ -18,6 +18,7 @@ const DEFAULT_STATS = {
   bossKills: [],
   fastestKill: null,
   sessions: [],
+  characterXP: {},
 };
 
 function loadStats() {
@@ -42,6 +43,43 @@ function saveStats() {
 }
 
 let stats = loadStats();
+
+// ---------------------------------------------------------------------------
+// XP & Level system
+// ---------------------------------------------------------------------------
+
+const XP_THRESHOLDS = [0, 500, 1500, 3500]; // Levels 1-4
+const MAX_LEVEL = 10;
+
+function getCharacterXPKey(className, characterName) {
+  return `${className}:${characterName}`;
+}
+
+function getLevelFromXP(xp) {
+  for (let lvl = XP_THRESHOLDS.length; lvl >= 1; lvl--) {
+    if (xp >= XP_THRESHOLDS[lvl - 1]) {
+      // Check higher levels (5+) with geometric scaling
+      if (lvl >= XP_THRESHOLDS.length) {
+        let threshold = XP_THRESHOLDS[XP_THRESHOLDS.length - 1];
+        let currentLvl = XP_THRESHOLDS.length;
+        while (currentLvl < MAX_LEVEL) {
+          threshold = Math.round(threshold * 1.5);
+          if (xp < threshold) return currentLvl;
+          currentLvl++;
+        }
+        return MAX_LEVEL;
+      }
+      return lvl;
+    }
+  }
+  return 1;
+}
+
+function getCharacterLevel(className, characterName) {
+  const key = getCharacterXPKey(className, characterName);
+  const xp = stats.characterXP[key] || 0;
+  return { level: getLevelFromXP(xp), xp };
+}
 
 // ---------------------------------------------------------------------------
 
@@ -197,6 +235,8 @@ app.post('/task/start', (req, res) => {
   const characterName = generateFantasyName();
 
   const taskId = id || crypto.randomUUID();
+  const { level, xp } = getCharacterLevel(charClass.className, characterName);
+
   const task = {
     id: taskId,
     name,
@@ -212,6 +252,8 @@ app.post('/task/start', (req, res) => {
       baseDPS: charClass.baseDPS,
       sprite: charClass.sprite,
       color: charClass.color,
+      level,
+      xp,
     },
   };
 
@@ -315,7 +357,12 @@ setInterval(() => {
 
       // Calculate damage (baseDPS scaled to one "attack" worth)
       // Each attack deals baseDPS * (attackSpeed / 1000) damage (damage per attack cycle)
-      const baseDamage = char.baseDPS * (char.attackSpeed / 1000);
+      const xpKey = getCharacterXPKey(char.class, char.name);
+      const currentXP = stats.characterXP[xpKey] || 0;
+      const level = getLevelFromXP(currentXP);
+      const levelMultiplier = 1 + 0.05 * (level - 1);
+
+      const baseDamage = char.baseDPS * (char.attackSpeed / 1000) * levelMultiplier;
       const varianceFactor = 1 + (Math.random() * 2 - 1) * VARIANCE;
       let damage = Math.round(baseDamage * varianceFactor);
 
@@ -330,6 +377,11 @@ setInterval(() => {
       stats.totalDamage += damage;
       stats.damageByClass[char.class] = (stats.damageByClass[char.class] || 0) + damage;
 
+      // Accumulate XP equal to damage dealt
+      const prevLevel = level;
+      stats.characterXP[xpKey] = currentXP + damage;
+      const newLevel = getLevelFromXP(stats.characterXP[xpKey]);
+
       broadcast({
         type: 'boss_damage',
         taskId: task.id,
@@ -339,7 +391,20 @@ setInterval(() => {
         isCrit,
         bossHP: boss.currentHP,
         bossMaxHP: boss.maxHP,
+        level: newLevel,
+        xp: stats.characterXP[xpKey],
       });
+
+      // Broadcast level-up event if character leveled
+      if (newLevel > prevLevel) {
+        broadcast({
+          type: 'level_up',
+          taskId: task.id,
+          characterName: char.name,
+          characterClass: char.class,
+          newLevel,
+        });
+      }
 
       // Check for boss death
       if (boss.currentHP <= 0) {
