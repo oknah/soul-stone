@@ -46,7 +46,7 @@ let stats = loadStats();
 // ---------------------------------------------------------------------------
 
 const app = express();
-const PORT = 3333;
+const PORT = process.env.PORT || 3333;
 
 app.use(cors());
 app.use(express.json());
@@ -63,12 +63,12 @@ const tasks = new Map();
 // ---------------------------------------------------------------------------
 
 const CHARACTER_CLASSES = [
-  { className: 'warrior',   name: 'Warrior',   baseDPS: 12, attackSpeed: 2000, color: '#FF6644', sprite: 'warrior.png' },
-  { className: 'mage',      name: 'Mage',      baseDPS: 18, attackSpeed: 3000, color: '#6688FF', sprite: 'mage.png' },
-  { className: 'rogue',     name: 'Rogue',     baseDPS: 8,  attackSpeed: 1200, color: '#88FF66', sprite: 'rogue.png' },
-  { className: 'cleric',    name: 'Cleric',    baseDPS: 6,  attackSpeed: 2500, color: '#FFDD44', sprite: 'cleric.png' },
-  { className: 'ranger',    name: 'Ranger',    baseDPS: 10, attackSpeed: 1800, color: '#44DDFF', sprite: 'ranger.png' },
-  { className: 'berserker', name: 'Berserker', baseDPS: 22, attackSpeed: 3500, color: '#FF4444', sprite: 'berserker.png' },
+  { className: 'warrior',   name: 'Warrior',   baseDPS: 14, attackSpeed: 2000, color: '#FF6644', sprite: 'warrior.png' },
+  { className: 'mage',      name: 'Mage',      baseDPS: 16, attackSpeed: 2800, color: '#6688FF', sprite: 'mage.png' },
+  { className: 'rogue',     name: 'Rogue',     baseDPS: 12, attackSpeed: 1200, color: '#88FF66', sprite: 'rogue.png' },
+  { className: 'cleric',    name: 'Cleric',    baseDPS: 10, attackSpeed: 2200, color: '#FFDD44', sprite: 'cleric.png' },
+  { className: 'ranger',    name: 'Ranger',    baseDPS: 13, attackSpeed: 1800, color: '#44DDFF', sprite: 'ranger.png' },
+  { className: 'berserker', name: 'Berserker', baseDPS: 18, attackSpeed: 3200, color: '#FF4444', sprite: 'berserker.png' },
 ];
 
 // ---------------------------------------------------------------------------
@@ -127,7 +127,7 @@ function spawnBoss() {
   const name = BOSS_NAMES[bossNameIndex % BOSS_NAMES.length];
   bossNameIndex++;
   const killCount = stats.bossKillCount;
-  const maxHP = Math.round(BOSS_BASE_HP * (1 + BOSS_HP_SCALING * killCount));
+  const maxHP = Math.round(BOSS_BASE_HP * (1 + BOSS_HP_SCALING * Math.pow(killCount, 0.7)));
   boss = {
     name,
     maxHP,

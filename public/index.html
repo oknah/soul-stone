@@ -397,6 +397,38 @@
       margin-left: auto;
     }
 
+    /* Battle log */
+    .battle-log {
+      margin-top: 4px;
+      padding-top: 4px;
+      border-top: 1px solid rgba(255, 255, 255, 0.15);
+      max-height: 48px;
+      overflow: hidden;
+      font-family: 'PressStart2P', monospace;
+      font-smooth: never;
+      -webkit-font-smoothing: none;
+      font-size: 7px;
+      line-height: 1.6;
+      color: var(--ff6-text-white);
+    }
+
+    .battle-log-entry {
+      opacity: 0;
+      animation: log-fade-in 0.3s ease forwards;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    @keyframes log-fade-in {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .battle-log .crit { color: #FF4444; }
+    .battle-log .victory { color: #FFD700; }
+    .battle-log .summon { color: #88DDFF; }
+
     /* Party member rows */
     .party-rows {
       display: flex;
@@ -749,17 +781,6 @@
     /* ================================================================
        FOOTER
        ================================================================ */
-    .footer {
-      text-align: center;
-      margin-top: 20px;
-      font-size: 0.7em;
-      color: var(--text-dim);
-    }
-
-    .footer a {
-      color: var(--gold-dim);
-    }
-
     /* ================================================================
        RESPONSIVE
        ================================================================ */
@@ -856,6 +877,7 @@
           <div class="party-rows" id="partyRows">
             <div class="empty-status" id="emptyStatus">The battlefield lies silent...</div>
           </div>
+          <div class="battle-log" id="battleLog"></div>
         </div>
 
         <!-- DOM fallback (hidden when canvas works) -->
@@ -879,9 +901,6 @@
       </div>
     </div>
 
-    <div class="footer">
-      Placeholder sprites - replace with <a href="https://0x72.itch.io/dungeontileset-ii">0x72 DungeonTileset II</a> (CC0)
-    </div>
   </div>
 
   <script>
@@ -2251,15 +2270,21 @@
       const spriteW = SPRITE_CONFIG.bosses.frameW * bossScale;
       const spriteH = SPRITE_CONFIG.bosses.frameH * bossScale;
 
+      // --- Boss phase based on HP ratio ---
+      const hpRatio = bossState ? (bossState.currentHP / bossState.maxHP) : 1;
+      const enraged = hpRatio <= 0.5;    // Phase 2: enraged
+      const critical = hpRatio <= 0.25;   // Phase 3: critical/desperate
+
       // --- Programmatic idle animation ---
-      // 1. Sinusoidal vertical bob: 1.5px amplitude, ~2s period
-      const bobAmplitude = 1.5;
-      const bobPeriod = 2000; // ms
+      // 1. Sinusoidal vertical bob — faster when enraged
+      const bobAmplitude = critical ? 2.5 : enraged ? 2.0 : 1.5;
+      const bobPeriod = critical ? 1200 : enraged ? 1500 : 2000;
       const bobOffset = Math.sin(bossIdleTime * (2 * Math.PI / bobPeriod)) * bobAmplitude;
 
-      // 2. Subtle scaleY breathing: oscillate between 1.0 and 1.02, ~3s period
-      const breathPeriod = 3000;
-      const breathScale = 1.0 + 0.02 * Math.sin(bossIdleTime * (2 * Math.PI / breathPeriod));
+      // 2. Subtle scaleY breathing — more intense when enraged
+      const breathPeriod = critical ? 1800 : enraged ? 2200 : 3000;
+      const breathAmp = critical ? 0.04 : enraged ? 0.03 : 0.02;
+      const breathScale = 1.0 + breathAmp * Math.sin(bossIdleTime * (2 * Math.PI / breathPeriod));
 
       // 3. Shadow beneath boss: dark ellipse that syncs with bob
       const shadowCenterX = bossCanvasX + spriteW / 2;
@@ -2302,6 +2327,32 @@
         ctx.globalCompositeOperation = 'lighter';
         ctx.globalAlpha = glowIntensity * bossOpacity;
         drawSprite(ctx, img, SPRITE_CONFIG.bosses, 0, bossFrame, bx, by, bossScale, false);
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = bossOpacity;
+      }
+
+      // Phase overlays — enrage (red tint) and critical (pulsing aura)
+      if (enraged && !bossDying && bossOpacity > 0.5) {
+        // Red tint overlay using 'multiply' isn't available, use 'source-atop' with red
+        ctx.globalCompositeOperation = 'source-atop';
+        const enrageIntensity = critical ? 0.25 : 0.15;
+        ctx.globalAlpha = enrageIntensity * bossOpacity;
+        ctx.fillStyle = critical ? '#FF2200' : '#FF4400';
+        ctx.fillRect(bx, by, spriteW, spriteH);
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = bossOpacity;
+      }
+
+      if (critical && !bossDying && bossOpacity > 0.5) {
+        // Pulsing aura glow around boss
+        const auraPulse = 0.3 + 0.2 * Math.sin(bossIdleTime * (2 * Math.PI / 800));
+        ctx.globalAlpha = auraPulse * bossOpacity;
+        ctx.globalCompositeOperation = 'lighter';
+        drawSprite(ctx, img, SPRITE_CONFIG.bosses, 0, bossFrame, bx, by, bossScale, false);
+        // Additional red-shifted glow
+        ctx.globalAlpha = auraPulse * 0.3 * bossOpacity;
+        ctx.fillStyle = '#FF0000';
+        ctx.fillRect(bx - 2, by - 2, spriteW + 4, spriteH + 4);
         ctx.globalCompositeOperation = 'source-over';
         ctx.globalAlpha = bossOpacity;
       }
@@ -2391,20 +2442,22 @@
     let screenShakeTimer = 0;
     let screenShakeIntensity = 0;
 
-    // Slash effect sprites
-    const slashEffects = [];
+    // Attack effect sprites (per-class)
+    const attackEffects = [];
 
     function triggerCanvasAttackEffects(attackData, targetX, targetY) {
       // Screen flash
       screenFlashOpacity = 0.7;
 
-      // Slash effect at boss
-      slashEffects.push({
-        x: targetX + 20,
-        y: targetY + 20,
+      // Class-specific attack effect at boss
+      attackEffects.push({
+        x: targetX + 20 + (Math.random() - 0.5) * 30,
+        y: targetY + 20 + (Math.random() - 0.5) * 20,
         frame: 0,
         timer: 0,
         active: true,
+        charClass: attackData.characterClass || 'warrior',
+        isCrit: attackData.isCrit,
       });
 
       // Screen shake
@@ -2450,19 +2503,36 @@
         if (bossBrightness < 1) bossBrightness = 1;
       }
 
-      // Boss death animation
+      // Boss death animation — 1.8s dramatic sequence
       if (bossDying) {
         bossDeathTimer += dt;
-        const t = bossDeathTimer / 1000;
-        if (t < 0.2) {
-          bossBrightness = 3;
+        const t = bossDeathTimer / 1800; // normalized 0→1 over 1.8s
+        if (t < 0.1) {
+          // Phase 1: Initial bright flash + freeze
+          bossBrightness = 4;
+          screenFlashOpacity = 0.6;
+        } else if (t < 0.45) {
+          // Phase 2: Rapid flicker + violent shake
+          const flickerRate = 30 + (t - 0.1) * 60;
+          bossBrightness = 1 + Math.abs(Math.sin(bossDeathTimer * flickerRate * 0.01)) * 2;
+          const shakeIntensity = 4 + (t - 0.1) * 15;
+          bossShakeX = (Math.random() - 0.5) * shakeIntensity;
+          bossShakeY = (Math.random() - 0.5) * shakeIntensity;
         } else if (t < 0.5) {
-          bossBrightness = 1 + Math.sin(t * 20) * 1;
-          bossShakeX = (Math.random() - 0.5) * 6;
-          bossShakeY = (Math.random() - 0.5) * 6;
+          // Phase 3: Explosion — spawn particles + big flash
+          if (!deathParticlesActive) {
+            spawnDeathParticles();
+            screenFlashOpacity = 1;
+          }
+          bossBrightness = 5;
+          bossShakeX = (Math.random() - 0.5) * 10;
+          bossShakeY = (Math.random() - 0.5) * 10;
         } else {
-          bossOpacity = Math.max(0, 1 - (t - 0.5) * 2);
+          // Phase 4: Boss fades out while particles fly
+          bossOpacity = Math.max(0, 1 - (t - 0.5) * 2.5);
           bossBrightness = 1.5;
+          bossShakeX *= 0.9;
+          bossShakeY *= 0.9;
         }
         if (t >= 1) {
           bossDying = false;
@@ -2472,13 +2542,18 @@
         }
       }
 
-      // Slash effects
-      for (const s of slashEffects) {
+      // Death particles
+      updateDeathParticles(dt);
+
+      // Attack effects
+      for (const s of attackEffects) {
         if (!s.active) continue;
         s.timer += dt;
         s.frame = Math.floor(s.timer / 80) % 4;
-        if (s.timer > 320) s.active = false;
+        if (s.timer > 400) s.active = false;
       }
+      // Trim inactive effects
+      while (attackEffects.length > 20 && !attackEffects[0].active) attackEffects.shift();
     }
 
     function renderFlash(ctx) {
@@ -2491,13 +2566,216 @@
       }
     }
 
-    function renderSlashEffects(ctx) {
-      const img = spriteImages['slash'];
-      if (!img) return;
-      for (const s of slashEffects) {
+    function renderAttackEffects(ctx) {
+      for (const s of attackEffects) {
         if (!s.active) continue;
-        drawSprite(ctx, img, SPRITE_CONFIG.effects, 0, s.frame, s.x, s.y, 4, false);
+        const t = s.timer / 400; // normalized 0→1
+        const alpha = t < 0.3 ? t / 0.3 : 1 - (t - 0.3) / 0.7;
+        const scale = s.isCrit ? 1.5 : 1;
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, alpha);
+
+        switch (s.charClass) {
+          case 'warrior': {
+            // Sword arc — white crescent sweep
+            ctx.strokeStyle = '#FFFFFF';
+            ctx.lineWidth = 2;
+            ctx.shadowColor = '#FF6644';
+            ctx.shadowBlur = 4 * scale;
+            const arcAngle = t * Math.PI * 0.8;
+            ctx.beginPath();
+            ctx.arc(s.x + 10, s.y + 10, 12 * scale, -Math.PI * 0.6 + arcAngle * 0.5, -Math.PI * 0.6 + arcAngle, false);
+            ctx.stroke();
+            // Trail
+            ctx.globalAlpha = alpha * 0.4;
+            ctx.lineWidth = 4;
+            ctx.stroke();
+            break;
+          }
+          case 'mage': {
+            // Energy burst — expanding ring of particles
+            ctx.shadowColor = '#6688FF';
+            ctx.shadowBlur = 6 * scale;
+            const radius = 4 + t * 16 * scale;
+            const count = 6;
+            for (let i = 0; i < count; i++) {
+              const angle = (Math.PI * 2 * i) / count + t * 3;
+              const px = s.x + 10 + Math.cos(angle) * radius;
+              const py = s.y + 10 + Math.sin(angle) * radius;
+              ctx.fillStyle = i % 2 === 0 ? '#88AAFF' : '#FFFFFF';
+              ctx.fillRect(Math.floor(px), Math.floor(py), 2, 2);
+            }
+            // Center flash
+            if (t < 0.3) {
+              ctx.globalAlpha = (1 - t / 0.3) * 0.6;
+              ctx.fillStyle = '#CCDDFF';
+              ctx.fillRect(s.x + 6, s.y + 6, 8, 8);
+            }
+            break;
+          }
+          case 'rogue': {
+            // Dual slash — X-shaped cross cuts
+            ctx.strokeStyle = '#88FF66';
+            ctx.lineWidth = 1.5;
+            ctx.shadowColor = '#88FF66';
+            ctx.shadowBlur = 3 * scale;
+            const len = 10 * t * scale;
+            const cx = s.x + 10, cy = s.y + 10;
+            // First slash
+            ctx.beginPath();
+            ctx.moveTo(cx - len, cy - len);
+            ctx.lineTo(cx + len, cy + len);
+            ctx.stroke();
+            // Second slash (delayed)
+            if (t > 0.15) {
+              ctx.beginPath();
+              ctx.moveTo(cx + len, cy - len);
+              ctx.lineTo(cx - len, cy + len);
+              ctx.stroke();
+            }
+            break;
+          }
+          case 'cleric': {
+            // Holy ring — expanding golden circle
+            ctx.strokeStyle = '#FFDD44';
+            ctx.lineWidth = 1.5;
+            ctx.shadowColor = '#FFDD44';
+            ctx.shadowBlur = 5 * scale;
+            const r = 3 + t * 14 * scale;
+            ctx.beginPath();
+            ctx.arc(s.x + 10, s.y + 10, r, 0, Math.PI * 2);
+            ctx.stroke();
+            // Inner cross
+            if (t < 0.5) {
+              const cr = r * 0.5;
+              ctx.beginPath();
+              ctx.moveTo(s.x + 10, s.y + 10 - cr);
+              ctx.lineTo(s.x + 10, s.y + 10 + cr);
+              ctx.moveTo(s.x + 10 - cr, s.y + 10);
+              ctx.lineTo(s.x + 10 + cr, s.y + 10);
+              ctx.stroke();
+            }
+            break;
+          }
+          case 'ranger': {
+            // Arrow trail — horizontal streak with arrowhead
+            ctx.strokeStyle = '#44DDFF';
+            ctx.lineWidth = 1.5;
+            ctx.shadowColor = '#44DDFF';
+            ctx.shadowBlur = 3 * scale;
+            const trailLen = 18 * scale;
+            const tipX = s.x + 20 - t * 8;
+            const tipY = s.y + 10;
+            // Arrow shaft
+            ctx.beginPath();
+            ctx.moveTo(tipX - trailLen * (1 - t), tipY);
+            ctx.lineTo(tipX, tipY);
+            ctx.stroke();
+            // Arrowhead
+            if (t < 0.6) {
+              ctx.beginPath();
+              ctx.moveTo(tipX, tipY);
+              ctx.lineTo(tipX - 4, tipY - 3);
+              ctx.moveTo(tipX, tipY);
+              ctx.lineTo(tipX - 4, tipY + 3);
+              ctx.stroke();
+            }
+            break;
+          }
+          case 'berserker': {
+            // Ground slam shockwave — expanding horizontal line with sparks
+            ctx.strokeStyle = '#FF4444';
+            ctx.lineWidth = 2.5;
+            ctx.shadowColor = '#FF4444';
+            ctx.shadowBlur = 6 * scale;
+            const width = t * 24 * scale;
+            const cy2 = s.y + 16;
+            ctx.beginPath();
+            ctx.moveTo(s.x + 10 - width, cy2);
+            ctx.lineTo(s.x + 10 + width, cy2);
+            ctx.stroke();
+            // Impact sparks
+            for (let i = 0; i < 3; i++) {
+              const sx = s.x + 10 + (Math.random() - 0.5) * width * 2;
+              const sy = cy2 - Math.random() * 8 * (1 - t);
+              ctx.fillStyle = '#FFAA44';
+              ctx.fillRect(Math.floor(sx), Math.floor(sy), 2, 2);
+            }
+            break;
+          }
+          default: {
+            // Fallback — use slash sprite if available
+            const img = spriteImages['slash'];
+            if (img) {
+              drawSprite(ctx, img, SPRITE_CONFIG.effects, 0, s.frame, s.x, s.y, 4, false);
+            }
+          }
+        }
+        ctx.restore();
       }
+    }
+
+    // ==================================================================
+    // BOSS DEATH PARTICLES
+    // ==================================================================
+    const MAX_DEATH_PARTICLES = 40;
+    const deathParticles = [];
+    let deathParticlesActive = false;
+
+    function spawnDeathParticles() {
+      deathParticlesActive = true;
+      const bossScale = 4;
+      const cx = bossCanvasX + (SPRITE_CONFIG.bosses.frameW * bossScale) / 2;
+      const cy = bossCanvasY + (SPRITE_CONFIG.bosses.frameH * bossScale) / 2;
+      // Get boss archetype color for particles
+      const key = getBossSpriteKey(bossState ? bossState.killCount : 0);
+      const colors = ['#FF4444', '#FF8844', '#FFCC44', '#FFFFFF', '#FF6644'];
+      for (let i = 0; i < MAX_DEATH_PARTICLES; i++) {
+        const angle = (Math.PI * 2 * i) / MAX_DEATH_PARTICLES + (Math.random() - 0.5) * 0.5;
+        const speed = 0.8 + Math.random() * 1.5;
+        let p = deathParticles[i];
+        if (!p) { p = {}; deathParticles[i] = p; }
+        p.active = true;
+        p.x = cx + (Math.random() - 0.5) * 20;
+        p.y = cy + (Math.random() - 0.5) * 20;
+        p.vx = Math.cos(angle) * speed;
+        p.vy = Math.sin(angle) * speed - 0.5;
+        p.size = 2 + Math.random() * 3;
+        p.color = colors[Math.floor(Math.random() * colors.length)];
+        p.opacity = 1;
+        p.age = 0;
+        p.maxAge = 600 + Math.random() * 600;
+        p.gravity = 0.003;
+      }
+    }
+
+    function updateDeathParticles(dt) {
+      if (!deathParticlesActive) return;
+      let anyActive = false;
+      for (const p of deathParticles) {
+        if (!p || !p.active) continue;
+        p.age += dt;
+        p.x += p.vx * dt * 0.1;
+        p.y += p.vy * dt * 0.1;
+        p.vy += p.gravity * dt;
+        p.opacity = Math.max(0, 1 - p.age / p.maxAge);
+        p.size *= 0.998;
+        if (p.age >= p.maxAge) p.active = false;
+        else anyActive = true;
+      }
+      if (!anyActive) deathParticlesActive = false;
+    }
+
+    function renderDeathParticles(ctx) {
+      if (!deathParticlesActive) return;
+      ctx.save();
+      for (const p of deathParticles) {
+        if (!p || !p.active) continue;
+        ctx.globalAlpha = p.opacity;
+        ctx.fillStyle = p.color;
+        ctx.fillRect(Math.floor(p.x), Math.floor(p.y), Math.ceil(p.size), Math.ceil(p.size));
+      }
+      ctx.restore();
     }
 
     // ==================================================================
@@ -2641,8 +2919,11 @@
       // Boss
       renderBoss(gameCtx);
 
-      // Slash effects
-      renderSlashEffects(gameCtx);
+      // Death particles (on top of boss)
+      renderDeathParticles(gameCtx);
+
+      // Attack effects
+      renderAttackEffects(gameCtx);
 
       // Party characters
       const sortedParty = [...party.values()].filter(e => e.canvasChar);
@@ -2995,6 +3276,106 @@
       osc2.stop(now + 0.5);
     }
 
+    // ==================================================================
+    // BATTLE BGM — procedural chiptune loop
+    // ==================================================================
+    let bgmPlaying = false;
+    let bgmGain = null;
+    let bgmInterval = null;
+    let bgmBeat = 0;
+
+    // Pentatonic-minor scale notes for JRPG feel
+    const BGM_BASS = [110, 110, 130.81, 146.83, 110, 110, 146.83, 130.81]; // A2 pattern
+    const BGM_MELODY = [
+      440, 523.25, 587.33, 523.25, 440, 392, 440, 523.25,  // phrase 1
+      587.33, 659.25, 587.33, 523.25, 440, 523.25, 440, 392, // phrase 2
+    ];
+    const BGM_TEMPO = 180; // ms per beat (≈160 BPM)
+
+    function startBGM() {
+      if (!audioCtx || bgmPlaying) return;
+      bgmPlaying = true;
+      bgmBeat = 0;
+
+      // BGM gain node — low volume so it sits behind SFX
+      bgmGain = audioCtx.createGain();
+      bgmGain.gain.value = 0;
+      bgmGain.connect(audioCtx.destination);
+      // Fade in
+      bgmGain.gain.linearRampToValueAtTime(0.06, audioCtx.currentTime + 1.5);
+
+      bgmInterval = setInterval(() => {
+        if (!audioCtx || muted || !bgmPlaying) return;
+        const now = audioCtx.currentTime;
+
+        // Bass — square wave arpeggiation
+        const bassNote = BGM_BASS[bgmBeat % BGM_BASS.length];
+        const bass = audioCtx.createOscillator();
+        bass.type = 'square';
+        bass.frequency.setValueAtTime(bassNote, now);
+        const bg = audioCtx.createGain();
+        bg.gain.setValueAtTime(0.5, now);
+        bg.gain.exponentialRampToValueAtTime(0.01, now + BGM_TEMPO / 1000 * 0.9);
+        bass.connect(bg);
+        bg.connect(bgmGain);
+        bass.start(now);
+        bass.stop(now + BGM_TEMPO / 1000);
+
+        // Melody — triangle wave, plays every other beat
+        if (bgmBeat % 2 === 0) {
+          const melNote = BGM_MELODY[(bgmBeat / 2) % BGM_MELODY.length];
+          const mel = audioCtx.createOscillator();
+          mel.type = 'triangle';
+          mel.frequency.setValueAtTime(melNote, now);
+          const mg = audioCtx.createGain();
+          mg.gain.setValueAtTime(0.4, now);
+          mg.gain.exponentialRampToValueAtTime(0.01, now + BGM_TEMPO / 1000 * 1.8);
+          mel.connect(mg);
+          mg.connect(bgmGain);
+          mel.start(now);
+          mel.stop(now + BGM_TEMPO / 1000 * 2);
+        }
+
+        // Hi-hat — noise on every beat, accent on 1 and 3
+        const accent = (bgmBeat % 4 === 0 || bgmBeat % 4 === 2);
+        const hatLen = accent ? 0.06 : 0.03;
+        const hatVol = accent ? 0.25 : 0.12;
+        const hatBuf = audioCtx.createBuffer(1, Math.floor(audioCtx.sampleRate * hatLen), audioCtx.sampleRate);
+        const hatData = hatBuf.getChannelData(0);
+        for (let i = 0; i < hatData.length; i++) {
+          hatData[i] = (Math.random() * 2 - 1) * (1 - i / hatData.length);
+        }
+        const hat = audioCtx.createBufferSource();
+        hat.buffer = hatBuf;
+        const hpf = audioCtx.createBiquadFilter();
+        hpf.type = 'highpass';
+        hpf.frequency.value = accent ? 8000 : 10000;
+        const hg = audioCtx.createGain();
+        hg.gain.setValueAtTime(hatVol, now);
+        hat.connect(hpf);
+        hpf.connect(hg);
+        hg.connect(bgmGain);
+        hat.start(now);
+
+        bgmBeat++;
+      }, BGM_TEMPO);
+    }
+
+    function stopBGM(fadeTime) {
+      if (!bgmPlaying || !bgmGain) return;
+      bgmPlaying = false;
+      const ft = fadeTime || 1.0;
+      bgmGain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + ft);
+      const interval = bgmInterval;
+      const gain = bgmGain;
+      setTimeout(() => {
+        clearInterval(interval);
+        try { gain.disconnect(); } catch(e) {}
+      }, ft * 1000 + 100);
+      bgmInterval = null;
+      bgmGain = null;
+    }
+
     // Init audio on first user interaction
     document.addEventListener('click', initAudio, { once: true });
     document.addEventListener('keydown', initAudio, { once: true });
@@ -3029,6 +3410,25 @@
     const muteBtn = document.getElementById('muteBtn');
     const crtBtn = document.getElementById('crtBtn');
     const themeSelect = document.getElementById('themeSelect');
+    const battleLog = document.getElementById('battleLog');
+
+    // ==================================================================
+    // BATTLE LOG
+    // ==================================================================
+    const MAX_LOG_ENTRIES = 4;
+
+    function addLogEntry(text, cssClass) {
+      const entry = document.createElement('div');
+      entry.className = 'battle-log-entry' + (cssClass ? ' ' + cssClass : '');
+      entry.textContent = text;
+      battleLog.appendChild(entry);
+      // Trim old entries
+      while (battleLog.children.length > MAX_LOG_ENTRIES) {
+        battleLog.removeChild(battleLog.firstChild);
+      }
+      // Scroll to bottom
+      battleLog.scrollTop = battleLog.scrollHeight;
+    }
 
     // ==================================================================
     // MUTE TOGGLE
@@ -3037,6 +3437,11 @@
       initAudio();
       muted = !muted;
       muteBtn.textContent = muted ? 'Sound: OFF' : 'Sound: ON';
+      if (muted && bgmPlaying) {
+        stopBGM(0.3);
+      } else if (!muted && party.size > 0 && !bgmPlaying) {
+        startBGM();
+      }
     });
 
     // ==================================================================
@@ -3110,6 +3515,13 @@
         emptyStatus.style.display = count > 0 ? 'none' : 'flex';
       } else {
         emptyParty.style.display = count > 0 ? 'none' : 'flex';
+      }
+
+      // Start/stop BGM based on party state
+      if (count > 0 && !bgmPlaying && audioCtx && !muted) {
+        startBGM();
+      } else if (count === 0 && bgmPlaying) {
+        stopBGM(2.0);
       }
     }
 
@@ -3314,14 +3726,23 @@
     // BOSS DEATH / VICTORY
     // ==================================================================
     function showVictory() {
+      // Fade out BGM for victory moment
+      if (bgmPlaying) stopBGM(0.5);
+
       if (useCanvas) {
         bossDying = true;
         bossDeathTimer = 0;
         bossOpacity = 1;
         triggerVictoryCanvas();
         playBossDeathSound();
-        // Play fanfare after death sound
-        setTimeout(() => playVictoryFanfare(), 800);
+        // Play fanfare after death sound, then restart BGM
+        setTimeout(() => {
+          playVictoryFanfare();
+          // Restart BGM after fanfare if party still active
+          setTimeout(() => {
+            if (party.size > 0 && !bgmPlaying && !muted && audioCtx) startBGM();
+          }, 2000);
+        }, 800);
       } else {
         // DOM fallback
         const overlay = document.createElement('div');
@@ -3416,24 +3837,31 @@
 
         case 'task_start':
           summonCharacter(data.task);
+          addLogEntry(`${data.task.character.name} joins the battle!`, 'summon');
           break;
 
         case 'task_complete':
           unsummonCharacter(data.task.id);
+          addLogEntry(`${data.task.character.name} departs.`);
           break;
 
         case 'boss_damage':
           damageQueue.push(data);
           processDamageQueue();
+          if (data.isCrit) {
+            addLogEntry(`${data.characterName} CRITICAL! ${data.amount} dmg!`, 'crit');
+          }
           break;
 
         case 'boss_death':
           showVictory();
           killCountEl.textContent = data.killCount;
+          addLogEntry(`Victory! ${bossState ? bossState.name : 'Boss'} defeated!`, 'victory');
           break;
 
         case 'boss_spawn':
           spawnNewBoss(data.boss);
+          addLogEntry(`${data.boss.name} appears!`);
           break;
 
         case 'atb_update':
