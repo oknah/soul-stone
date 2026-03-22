@@ -189,6 +189,8 @@ function spawnBoss() {
     buff: activeBuff, // Apply pending buff from last kill
   };
   activeBuff = null; // Consumed — one fight only
+  bossAttackTimer = 0;
+  nextBossAttack = BOSS_ATTACK_INTERVAL_MIN + Math.random() * (BOSS_ATTACK_INTERVAL_MAX - BOSS_ATTACK_INTERVAL_MIN);
   return boss;
 }
 
@@ -338,6 +340,13 @@ const VARIANCE = 0.20; // +/- 20%
 // Per-task ATB state: taskId -> { atb: 0-100 }
 const atbState = new Map();
 
+// Boss attack timer
+let bossAttackTimer = 0;
+const BOSS_ATTACK_INTERVAL_MIN = 8000;
+const BOSS_ATTACK_INTERVAL_MAX = 12000;
+let nextBossAttack = BOSS_ATTACK_INTERVAL_MIN + Math.random() * (BOSS_ATTACK_INTERVAL_MAX - BOSS_ATTACK_INTERVAL_MIN);
+const BOSS_ATTACK_TYPES = ['aoe_slam', 'roar', 'targeted_strike'];
+
 setInterval(() => {
   // Gather active tasks
   const activeTasks = [];
@@ -427,6 +436,8 @@ setInterval(() => {
       // Check for boss death
       if (boss.currentHP <= 0) {
         boss.killCount++;
+        bossAttackTimer = 0;
+        nextBossAttack = BOSS_ATTACK_INTERVAL_MIN + Math.random() * (BOSS_ATTACK_INTERVAL_MAX - BOSS_ATTACK_INTERVAL_MIN);
         broadcast({ type: 'boss_death', killCount: boss.killCount });
 
         // Roll loot drop for next fight
@@ -481,6 +492,19 @@ setInterval(() => {
       type: 'atb_update',
       gauges: Object.fromEntries(atbUpdates.map(u => [u.taskId, Math.round(u.atb)])),
     });
+  }
+
+  // Boss attack timer
+  bossAttackTimer += ATB_TICK_INTERVAL;
+  if (bossAttackTimer >= nextBossAttack) {
+    bossAttackTimer = 0;
+    nextBossAttack = BOSS_ATTACK_INTERVAL_MIN + Math.random() * (BOSS_ATTACK_INTERVAL_MAX - BOSS_ATTACK_INTERVAL_MIN);
+    const attackType = BOSS_ATTACK_TYPES[Math.floor(Math.random() * BOSS_ATTACK_TYPES.length)];
+    const attack = { type: attackType };
+    if (attackType === 'targeted_strike' && activeTasks.length > 0) {
+      attack.targetTaskId = activeTasks[Math.floor(Math.random() * activeTasks.length)].id;
+    }
+    broadcast({ type: 'boss_attack', attack });
   }
 }, ATB_TICK_INTERVAL);
 
